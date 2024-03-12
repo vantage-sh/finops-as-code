@@ -1,0 +1,44 @@
+cost_centers:
+  security-operations-cc:
+    business_unit: Cybersecurity
+    team: Security Operations
+
+  payment-processing-cc:
+    business_unit: Financial Technology
+    team: Payment Processing
+
+  account-management-cc:
+    business_unit: Financial Technology
+    team: Account Management
+
+  network-operations-cc:
+    business_unit: Infrastructure Services
+    team: Network Operations
+
+  data-center-management-cc:
+    business_unit: Infrastructure Services
+    team: Data Center Management
+
+  software-engineering-cc:
+    business_unit: Engineering
+    team: Software Engineering
+
+  hardware-engineering-cc:
+    business_unit: Engineering
+    team: Hardware Engineering
+
+  research-labs-cc:
+    business_unit: Research & Development
+    team: Research Labs
+
+  innovation-cc:
+    business_unit: Research & Development
+    team: Innovation Center
+
+  brand-management-platform-cc:
+    business_unit: Marketing
+    team: Brand Management
+
+  market-research-cc:
+    business_unit: Marketing
+    team: Market Research
