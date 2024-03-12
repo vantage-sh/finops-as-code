@@ -10,7 +10,7 @@ In this demo, we’ll complete the following steps:
   - Create teams in Vantage that have the same names as the Okta groups
   - Create a set of Vantage Cost Reports and folders with specific access grants tied to each team
 
-![A diagram that starts with a CSV icon. CSV points to the Terraform logo. The Terraform logo has one arrow that points to the Okta logo and one that points to the Vantage logo. Under the Okta logo are three squares that say Assign App to Groups. Under the Vantage logo is one set of three squares that says Vantage Resources. Another square says Teams and Access Grants and has three user icons with checkmarks over them.](/assets/okta-terraform.png)
+<img src="/assets/okta-terraform.png" alt="A diagram that starts with a CSV icon. CSV points to the Terraform logo. The Terraform logo has one arrow that points to the Okta logo and one that points to the Vantage logo. Under the Okta logo are three squares that say Assign App to Groups. Under the Vantage logo is one set of three squares that says Vantage Resources. Another square says Teams and Access Grants and has three user icons with checkmarks over them." width="500" height="auto">
 
 ## Prerequisites
 
@@ -22,7 +22,7 @@ You will need to be an Okta administrator for your organization with the ability
 
 - Valid Read/Write [Vantage API token](https://vantage.readme.io/reference/authentication)
   - Export with `export VANTAGE_API_TOKEN=<YOUR_API_TOKEN>`
-- At least one [connected provider](https://www.vantage.sh/integrations/)
+- At least one [connected provider](https://www.vantage.sh/integrations)
 
 ### Okta SAML Connection in Vantage
 

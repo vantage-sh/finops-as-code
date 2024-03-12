@@ -9,13 +9,13 @@ In this demo, your organization uses a structure that's defined in the included 
   - Your company tags resources based on a cost_center tag. Each team’s Cost Report will be filtered by its corresponding cost_center tag to include only costs attributed to that team/cost center.
 - Create a dashboard for each business unit that contains the Cost Reports for its associated teams.
 
-![A diagram that starts with a YAML icon. YAML points to the Terraform logo. The Terraform logo has one arrow that points to the Vantage logo, which is in a box. Under the Vantage logo is an arrow that points to one set of three folder icons that say Business Unit Folders. Another arrow points to three report icons that say Team Cost/Center Cost Reports. A third arrow points to three dashboard icons that say Business Unit Dashboards.](/assets/terraform-cost-reporting.png)
+<img src="/assets/terraform-cost-reporting.png" alt="A diagram that starts with a YAML icon. YAML points to the Terraform logo. The Terraform logo has one arrow that points to the Vantage logo, which is in a box. Under the Vantage logo is an arrow that points to one set of three folder icons that say Business Unit Folders. Another arrow points to three report icons that say Team Cost/Center Cost Reports. A third arrow points to three dashboard icons that say Business Unit Dashboards." width="500" height="auto">
 
 ## Prerequisites
 
 - Valid Read/Write [Vantage API token](https://vantage.readme.io/reference/authentication)
   - Export with `export VANTAGE_API_TOKEN=<YOUR_API_TOKEN>`
-- At least one [connected provider](https://www.vantage.sh/integrations/)
+- At least one [connected provider](https://www.vantage.sh/integrations)
 
 ## Create the Organization Structure
 
