@@ -18,11 +18,11 @@ Like its close cousin, Infrastructure as Code, FinOps as Code supports automatio
 
 This repository contains API Python tutorials (within the `/python` directory) and Terraform tutorials (within the `/terraform` directory). Each demo contains a README with any prerequisites or requirements. 
 
-To use the files in this repo, create a local clone of this repo.
+To use the demos provided here, create a local clone of this repo.
 
 ## Vantage API Authentication
 
-Each demo requires access to the Vantage API. Follow the steps in the [Vantage API documentation](https://vantage.readme.io/reference/authentication) for how to create a user authentication token.
+Each demo requires access to the Vantage API. Follow the steps in the [Vantage API documentation](https://vantage.readme.io/reference/authentication) on how to create a user authentication token.
 
 ## Contributing
 
