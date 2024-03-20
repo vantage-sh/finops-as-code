@@ -16,7 +16,11 @@ In this demo, we’ll complete the following steps:
 
 ### Okta
 
-You will need to be an Okta administrator for your organization with the ability to assign applications to groups and create a SAML SSO application. You will also need access to API credentials to create a connection with Terraform. See the [Okta documentation](https://help.okta.com/en-us/content/topics/security/administrators-admin-comparison.htm) for details on administrator permissions. Ensure you have a valid [Okta API token](https://developer.okta.com/docs/guides/create-an-api-token/main/).
+You will need to be an Okta administrator for your organization with the ability to assign applications to groups and create a SAML SSO application. You will also need access to API credentials to create a connection with Terraform. See the [Okta documentation](https://help.okta.com/en-us/content/topics/security/administrators-admin-comparison.htm) for details on administrator permissions.
+
+You'll also need to create a service app that provides Terraform access to your Okta account. With the service app, you can create a private key pair as your client credentials. You'll need the service app's client ID and a private key to configure in your Okta provider Terraform configuration. Ensure the service app is granted the following scopes: `okta.groups.manage`, `okta.users.manage`, and `okta.policies.manage`. For more information on how to configure this service app, see the [Okta documentation](https://developer.okta.com/docs/guides/terraform-enable-org-access/main/). 
+
+_You can also reference [this Okta workshop](https://developer.okta.com/blog/2023/07/28/terraform-workshop) for detailed instructions and a video on setting up an Okta–Terraform integration._
 
 ### Vantage
 
