@@ -10,6 +10,12 @@ variable "okta_base_url" {
   default     = "okta.com"
 }
 
+variable "okta_client_id" {
+  type        = string
+  description = "Okta client ID"
+  default     = "<YOUR_OKTA_CLIENT_ID>"
+}
+
 variable "vantage_workspace_token" {
   type        = string
   description = "Vantage workspace token"
