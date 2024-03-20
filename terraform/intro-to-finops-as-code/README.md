@@ -1,6 +1,6 @@
 # Intro to FinOps as Code with Terraform
 
-This demo walks through several FinOps use cases, showcasing how Terraform and other FinOps as Code tools can automate and optimize cloud financial operations. We’ll provide code samples and recommendations for how to get up and running with your FinOps as Code practice.
+This demo is an introduction to FinOps as Code on Vantage. In this demo, we'll set up a basic Terraform deployment to create two Cost Reports, a set of folders, and a dashboard.
 
 ## Prerequisites
 

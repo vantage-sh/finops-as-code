@@ -8,13 +8,13 @@ CDKTF takes the infrastructure you define and synthesizes it into JSON configura
 
 - Valid Read/Write [Vantage API token](https://vantage.readme.io/reference/authentication)
   - Export with `export VANTAGE_API_TOKEN=<YOUR_API_TOKEN>`
-- At least one [connected provider](https://www.vantage.sh/integrations/)
+- At least one [connected provider](https://www.vantage.sh/integrations)
 - A Vantage [workspace token](https://console.vantage.sh/settings/workspaces) (e.g., `wrkspc_12345`)
   - Export with `export VANTAGE_WORKSPACE_TOKEN=<YOUR_WORKSPACE_TOKEN>`
 
 ## Complete the Demo
 
-1. Create a directory for your project and initialize a Python (or your language of choice) CDKTF project.
+1. Create a directory for your project and initialize a Python (or your language of choice) CDKTF project. Add the files from this repo to the directory.
 
     ```bash
     mkdir vantage-cdktf-example && cd vantage-cdktf-example 

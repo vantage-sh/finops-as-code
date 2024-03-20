@@ -6,8 +6,10 @@ In this demo, your organization uses a structure that's defined in the included 
 
 - Create a set of folders in Vantage for each business unit.
 - Create a set of Cost Reports for each team.
-  - Your company tags resources based on a cost_center tag. Each team’s Cost Report will be filtered by its corresponding cost_center tag to include only costs attributed to that team/cost center.
+  - Your company tags resources based on a `cost_center` tag. Each team’s Cost Report will be filtered by its corresponding `cost_center` tag to include only costs attributed to that team/cost center.
 - Create a dashboard for each business unit that contains the Cost Reports for its associated teams.
+
+The below image describes the workflow of this demo.
 
 <img src="/assets/terraform-cost-reporting.png" alt="A diagram that starts with a YAML icon. YAML points to the Terraform logo. The Terraform logo has one arrow that points to the Vantage logo, which is in a box. Under the Vantage logo is an arrow that points to one set of three folder icons that say Business Unit Folders. Another arrow points to three report icons that say Team Cost/Center Cost Reports. A third arrow points to three dashboard icons that say Business Unit Dashboards." width="500" height="auto">
 
