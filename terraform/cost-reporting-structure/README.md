@@ -22,7 +22,7 @@ The below image describes the workflow of this demo.
 ## Create the Organization Structure
 
 1. Update `variables.tf` with a Vantage [workspace token](https://console.vantage.sh/settings/workspaces) (e.g., `wrkspc_12345`). 
-2. The `filter` on the `vantage_cost_report` assumes the organization uses GCP as its main cloud provider and has `cost_center` labels attached to resources in their cloud environment. You can update this `filter` as needed. See the **Reference** section below.
+2. The `filter` on the `vantage_cost_report` assumes the organization uses GCP as its main cloud provider and has `cost_center` labels attached to resources in its cloud environment. You can update this `filter` as needed. See the **Reference** section below.
 3. Deploy this configuration with `terraform apply`.
 
 ## Reference
