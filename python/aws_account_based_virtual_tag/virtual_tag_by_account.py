@@ -4,7 +4,7 @@ import os
 
 
 url = "https://api.vantage.sh/v2/virtual_tag_configs"
-VANTAGE_ACCESS_TOKEN = os.environ.get("VANTAGE_ACCESS_TOKEN")
+VANTAGE_API_TOKEN = os.environ.get("VANTAGE_ACCESS_TOKEN")
 
 session = boto3.session.Session()
 client = session.client('sts')
@@ -31,7 +31,7 @@ for page in page_iterator:
         headers = {
             "accept": "application/json",
             "content-type": "application/json",
-            "authorization": f"Bearer {VANTAGE_ACCESS_TOKEN}"
+            "authorization": f"Bearer {VANTAGE_API_TOKEN}"
         }
         print(payload)
 
