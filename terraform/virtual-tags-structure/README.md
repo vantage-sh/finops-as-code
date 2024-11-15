@@ -1,4 +1,4 @@
-# Using Terraform to Build a Virtual Tagging Segment Structure
+# Using Terraform to Build a Virtual Tagging Structure
 
 A virtual tag is a way to consistently tag your costs across providers in Vantage. Virtual tags can help you increase tagging coverage across your cloud infrastructure. Create cost allocation tag keys with a set of corresponding values and filters directly in the Vantage without needing to involve your engineering team in making infrastructure changes.
 
