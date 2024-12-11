@@ -4,7 +4,7 @@ import os
 
 
 url = "https://api.vantage.sh/v2/virtual_tag_configs"
-VANTAGE_API_TOKEN = os.environ.get("VANTAGE_ACCESS_TOKEN")
+VANTAGE_ACCESS_TOKEN = os.environ.get("VANTAGE_ACCESS_TOKEN")
 
 session = boto3.session.Session()
 client = session.client('sts')
@@ -15,28 +15,26 @@ paginator = org.get_paginator('list_accounts')
 page_iterator = paginator.paginate()
 
 accounts = []
-
-for page in page_iterator:        
+for page in page_iterator:
     for acct in page['Accounts']:
-        payload = {
-            "overridable": False,
-            "key": acct['Name'],
-            "values": [
-                {
-                    "filter": f"costs.provider = 'aws' AND costs.account_id = '{acct['Id']}'",
-                    "name": "Account ID"
-                }
-            ] 
-        }
-        headers = {
-            "accept": "application/json",
-            "content-type": "application/json",
-            "authorization": f"Bearer {VANTAGE_API_TOKEN}"
-        }
-        print(payload)
+        accounts.append({
+            "filter": f"costs.provider = 'aws' AND costs.account_id = '{acct['Id']}'",
+            "name": acct['Name'].replace("'?!", "")
+        })
 
-        response = requests.post(url, json=payload, headers=headers)
-        print(response.text)
+payload = {
+    "overridable": False,
+    "key": "AWS Account Names",
+    "values": accounts
+}
+headers = {
+    "accept": "application/json",
+    "content-type": "application/json",
+    "authorization": f"Bearer {VANTAGE_ACCESS_TOKEN}"
+}
+
+response = requests.post(url, json=payload, headers=headers)
+print(response.text)
 
 
 
