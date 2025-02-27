@@ -16,8 +16,8 @@ locals {
 #   value = local.csv_data
 # }
 
-# output "accounts_per_owner" {
-#   value = local.accounts_per_owner
+# output "projects_per_owner" {
+#   value = local.projects_per_owner
 # }
 
 resource "vantage_virtual_tag_config" "project_virtual_tag_config" {
