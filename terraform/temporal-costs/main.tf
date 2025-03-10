@@ -22,7 +22,7 @@ locals {
 
 resource "vantage_virtual_tag_config" "project_virtual_tag_config" {
   key            = "Temporal Cloud Namespaces"
-  backfill_until = "20245-03-01"
+  backfill_until = "2025-03-01"
   overridable    = false
   values = flatten([
     for team, namespaces in local.namespaces_per_team : [
