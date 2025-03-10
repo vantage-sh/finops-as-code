@@ -1,0 +1,15 @@
+team,namespace
+Payments,payments-prod
+Payments,payments-staging
+Orders,orders-prod
+Orders,orders-staging
+Customer Support,support-prod
+Customer Support,support-staging
+Fraud Detection,fraud-prod
+Fraud Detection,fraud-staging
+Fraud Detection,fraud-dev
+Analytics,analytics-prod
+Analytics,analytics-staging
+Billing,billing-prod
+Billing,billing-staging
+Billing,billing-dev
