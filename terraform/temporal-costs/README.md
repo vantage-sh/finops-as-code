@@ -11,5 +11,5 @@ If your teams are running workloads across Temporal Cloud and other infrastructu
 ## Create the Temporal Cloud Teams–Namespace Virtual Tag
 
 1. The local variables in `main.tf` use sample data. Update these variables to match your use case.
-2. The `filter` item in the virtual tag resource uses Vantage Query Language. See the Reference section below and update this filter for your use case.
+2. The `filter` item in the virtual tag resource uses Vantage Query Language. Update this filter for your use case.
 3. Deploy this configuration with `terraform apply`.
