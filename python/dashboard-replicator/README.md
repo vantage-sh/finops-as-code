@@ -1,4 +1,4 @@
-# 🛠️ Vantage Dashboard Replicator
+# Vantage Dashboard Replicator
 
 ## Overview
 
@@ -17,9 +17,9 @@ This tool is particularly useful for teams using **FinOps-as-Code**, enabling co
 
 Install dependencies:
 
-\`\`\`bash
+```bash
 pip install requests
-\`\`\`
+```
 
 ## Setup
 
