@@ -32,17 +32,7 @@ git clone https://github.com/vantage-sh/finops-as-code.git
 cd finops-as-code/python/dashboard-replicator
 ```
 
-2. Retrieve the following variables. You can set the following as environment variables, or use them directly within the prompts:
-
-```bash
-export SOURCE_API_KEY="your-source-api-key"
-export TARGET_API_KEY="your-target-api-key"
-export SOURCE_WORKSPACE_ID="your-source-workspace-id"
-export TARGET_WORKSPACE_ID="your-target-workspace-id"
-export DASHBOARD_ID="dashboard-id-to-clone"
-```
-
-> You can retrieve these values from the Vantage web UI or API.
+2. Create an API key for all Vantage Accounts you are looking to utilize for copying. You can create these in the Vantage web UI.
 
 ## Usage
 
