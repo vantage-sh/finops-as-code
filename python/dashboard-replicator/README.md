@@ -59,19 +59,6 @@ The script will:
 3. Recreate the reports in the target workspace.
 4. Rebuild a new dashboard in the target workspace using the cloned reports.
 
-## Example
-
-To clone dashboard `abc123` from workspace `ws1` to `ws2`:
-
-```bash
-export SOURCE_API_KEY="sk_test_src"
-export TARGET_API_KEY="sk_test_tgt"
-export SOURCE_WORKSPACE_ID="ws1"
-export TARGET_WORKSPACE_ID="ws2"
-export DASHBOARD_ID="abc123"
-
-python vantage_dashboard_replicator.py
-```
 
 ## Notes & Limitations
 
