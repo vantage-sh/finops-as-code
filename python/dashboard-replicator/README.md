@@ -2,6 +2,8 @@
 
 ## Overview
 
+[![Dashboard Replicator Demo](https://cdn.loom.com/sessions/thumbnails/5080dcc4e91345eaa15eac19add2f86f-42c1eff4962e2270-full-play.gif)](https://www.loom.com/share/5080dcc4e91345eaa15eac19add2f86f?sid=d228bb80-ecfa-4a85-aa10-fd4880e71e80)
+
 The **Vantage Dashboard Replicator** is a Python script that enables you to **replicate an entire Vantage dashboard**, including all its **underlying reports** (e.g., Cost Reports, Resource Reports, etc.), across different workspaces. You can clone dashboards:
 
 - **Within the same Vantage account** (to a different workspace)
