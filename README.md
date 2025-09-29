@@ -26,7 +26,7 @@ Each demo requires access to the Vantage API. Follow the steps in the [Vantage A
 
 ## Contributing
 
-If there are additional tutorials or demos you want to see here, [create a tutorial request](https://github.com/vantagesh/finops-as-code/issues) via the Issues section of this repo.
+If there are additional tutorials or demos you want to see here, [create a tutorial request](https://github.com/vantage-sh/finops-as-code/issues) via the Issues section of this repo.
 
 ## Additional Resources
 
