@@ -19,5 +19,5 @@ Open the Jupyter Notebook and follow along with the steps on how to import your 
 ## References 
 
 - [Vantage Blog](https://www.vantage.sh/blog/finops-as-code-active-resources)
-- [Vantage Resources API Endpoint](https://docs.vantage.sh/api/resourcereports/get-all-resource-reports)
+- [Vantage Resources API Endpoint](https://docs.vantage.sh/api/resources/get-resources)
 - [Active Resources Documentation](https://docs.vantage.sh/active_resources)
