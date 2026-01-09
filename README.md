@@ -22,7 +22,7 @@ To use the demos provided here, create a local clone of this repo.
 
 ## Vantage API Authentication
 
-Each demo requires access to the Vantage API. Follow the steps in the [Vantage API documentation](https://vantage.readme.io/reference/authentication) on how to create a user authentication token.
+Each demo requires access to the Vantage API. Follow the steps in the [Vantage API documentation](https://docs.vantage.sh/api/authentication) on how to create a user authentication token.
 
 ## Contributing
 
@@ -30,7 +30,7 @@ If there are additional tutorials or demos you want to see here, [create a tutor
 
 ## Additional Resources
 
-- [Vantage API Documentation](https://vantage.readme.io/reference/general)
+- [Vantage API Documentation](https://docs.vantage.sh/api)
 - [Vantage Product Documentation](https://docs.vantage.sh/)
   - [VQL (Vantage Query Language)](https://docs.vantage.sh/vql)
   - [Terraform Provider Intro](https://docs.vantage.sh/terraform)

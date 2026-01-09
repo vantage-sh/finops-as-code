@@ -8,10 +8,10 @@ See the [demo blog](https://www.vantage.sh/blog/automate-unit-economics) for a w
 
 ## Prerequisites
 
-- Valid Read/Write [Vantage API token](https://vantage.readme.io/reference/authentication)
+- Valid Read/Write [Vantage API token](https://docs.vantage.sh/api/authentication)
   - Export with `export VANTAGE_API_TOKEN=<YOUR_API_TOKEN>`
 - At least one [connected provider](https://www.vantage.sh/integrations)
-- A preconfigured business metric. To create the initial business metric, you can create it directly in [Vantage](https://docs.vantage.sh/per_unit_costs), or you can send the following POST call to the `/business_metrics` [endpoint](https://vantage.readme.io/reference/createbusinessmetric).
+- A preconfigured business metric. To create the initial business metric, you can create it directly in [Vantage](https://docs.vantage.sh/per_unit_costs), or you can send the following POST call to the `/business_metrics` [endpoint](https://docs.vantage.sh/api/businessmetrics/create-business-metric).
   - Export with `export ORDERS_METRIC_ID=<BUSINESS_METRIC_TOKEN>`
 
 ## Complete the Demo
@@ -23,6 +23,6 @@ See the [demo blog](https://www.vantage.sh/blog/automate-unit-economics) for a w
 ## References 
 
 - [Vantage Blog](https://www.vantage.sh/blog/automate-unit-economics)
-- [Vantage Business Metrics API Endpoint](https://vantage.readme.io/reference/createbusinessmetric)
+- [Vantage Business Metrics API Endpoint](https://docs.vantage.sh/api/businessmetrics/create-business-metric)
 - [Business Metrics Documentation](https://docs.vantage.sh/per_unit_costs)
 - [`psycopg2` Documentation](https://www.psycopg.org/docs/usage.html)

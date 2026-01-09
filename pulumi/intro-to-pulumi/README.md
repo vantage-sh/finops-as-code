@@ -4,7 +4,7 @@ This demo is an introduction to FinOps as Code on Vantage. In this demo, we'll s
 
 ## Prerequisites
 
-- Valid Read/Write [Vantage API token](https://vantage.readme.io/reference/authentication)
+- Valid Read/Write [Vantage API token](https://docs.vantage.sh/api/authentication)
   - Export with `export VANTAGE_API_TOKEN=<YOUR_API_TOKEN>`
 - Export the Vantage API host with: `export VANTAGE_API_HOST="https://api.vantage.sh"`
 - At least one [connected provider](https://www.vantage.sh/integrations)

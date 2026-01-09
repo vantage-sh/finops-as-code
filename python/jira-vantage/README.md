@@ -12,7 +12,7 @@ See the [demo blog](https://www.vantage.sh/blog/automate-jira-issues) for a walk
 
 ## Prerequisites
 
-- Valid [Vantage API token](https://vantage.readme.io/reference/authentication)
+- Valid [Vantage API token](https://docs.vantage.sh/api/authentication)
   - Export with `export VANTAGE_API_TOKEN=<YOUR_API_TOKEN>`
 - At least one [connected provider](https://www.vantage.sh/integrations) from either AWS, Azure, Datadog, or Kubernetes
 - Base64-encoded Jira token and email address in the form of `useremail:api_token`
@@ -27,5 +27,5 @@ See the [demo blog](https://www.vantage.sh/blog/automate-jira-issues) for a walk
 
 - [Vantage Blog](https://www.vantage.sh/blog/automate-jira-issues)
 - [Basic auth Jira docs](https://developer.atlassian.com/cloud/jira/platform/basic-auth-for-rest-apis/)
-- [Vantage Cost Recommendations API Endpoint](https://vantage.readme.io/reference/getrecommendations)
+- [Vantage Cost Recommendations API Endpoint](https://docs.vantage.sh/api/recommendations/get-all-recommendations)
 - [Cost Recommendations Documentation](https://docs.vantage.sh/cost_recommendations)
