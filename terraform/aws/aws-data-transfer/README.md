@@ -4,7 +4,7 @@ Create this report to view data transfer costs for AWS in Vantage.
 
 ## Prerequisites
 
-- Valid Read/Write [Vantage API token](https://vantage.readme.io/reference/authentication)
+- Valid Read/Write [Vantage API token](https://docs.vantage.sh/api/authentication)
   - Export with `export VANTAGE_API_TOKEN=<YOUR_API_TOKEN>`
 - AWS as a [connected provider](https://www.vantage.sh/integrations/aws)
 

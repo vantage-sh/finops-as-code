@@ -6,7 +6,7 @@ CDKTF takes the infrastructure you define and synthesizes it into JSON configura
 
 ## Prerequisites
 
-- Valid Read/Write [Vantage API token](https://vantage.readme.io/reference/authentication)
+- Valid Read/Write [Vantage API token](https://docs.vantage.sh/api/authentication)
   - Export with `export VANTAGE_API_TOKEN=<YOUR_API_TOKEN>`
 - At least one [connected provider](https://www.vantage.sh/integrations)
 - A Vantage [workspace token](https://console.vantage.sh/settings/workspaces) (e.g., `wrkspc_12345`)

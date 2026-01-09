@@ -8,7 +8,7 @@ See the [demo blog](https://www.vantage.sh/blog/finops-as-code-active-resources)
 
 ## Prerequisites
 
-- Valid [Vantage API token](https://vantage.readme.io/reference/authentication)
+- Valid [Vantage API token](https://docs.vantage.sh/api/authentication)
   - Export with `export VANTAGE_API_TOKEN=<YOUR_API_TOKEN>`
 - At least one [connected provider](https://www.vantage.sh/integrations) with [active resources](https://docs.vantage.sh/active_resources) 
 
@@ -19,5 +19,5 @@ Open the Jupyter Notebook and follow along with the steps on how to import your 
 ## References 
 
 - [Vantage Blog](https://www.vantage.sh/blog/finops-as-code-active-resources)
-- [Vantage Resources API Endpoint](https://vantage.readme.io/reference/getreportresources)
+- [Vantage Resources API Endpoint](https://docs.vantage.sh/api/resourcereports/get-all-resource-reports)
 - [Active Resources Documentation](https://docs.vantage.sh/active_resources)

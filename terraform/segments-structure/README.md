@@ -15,7 +15,7 @@ In this demo, your organization uses a structure that's defined in the included 
 
 ## Prerequisites
 
-- Valid Read/Write [Vantage API token](https://vantage.readme.io/reference/authentication)
+- Valid Read/Write [Vantage API token](https://docs.vantage.sh/api/authentication)
   - Export with `export VANTAGE_API_TOKEN=<YOUR_API_TOKEN>`
 - At least one [connected provider](https://www.vantage.sh/integrations)
 
