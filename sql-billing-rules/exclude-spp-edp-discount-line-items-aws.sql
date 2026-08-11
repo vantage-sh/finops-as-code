@@ -3,6 +3,6 @@
 DELETE FROM aws
 WHERE aws.lineItem/LineItemType IN ('Discount', 'Credit')
 AND (
-  aws.lineItem/LineItemDescription ILIKE '%Enterprise Discount Program%'
-  OR aws.lineItem/LineItemDescription ILIKE '%Solution Provider%'
+  aws.lineItem/LineItemDescription LIKE '%Enterprise Discount Program%'
+  OR aws.lineItem/LineItemDescription LIKE '%Solution Provider%'
 )
