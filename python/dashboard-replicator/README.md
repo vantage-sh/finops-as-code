@@ -15,12 +15,13 @@ This tool is particularly useful for teams using **FinOps-as-Code**, enabling co
 
 - Python 3.7+
 - `requests` library (for Vantage API calls)
+- `simple-term-menu` library (for the interactive terminal menus)
 - Valid Vantage **API tokens** for source and target workspaces
 
 Install dependencies:
 
 ```bash
-pip install requests
+pip install requests simple-term-menu
 ```
 
 ## Setup
@@ -52,7 +53,7 @@ The script will:
 
 ## Notes & Limitations
 
-- This script can only add existing Financial Commitment Reports, as there is not a supported API to create new FCRs
+- Saved Filters attached to Cost Reports are not recreated in the destination workspace; reattach them manually after cloning
 - Tags and linked entities (e.g., saved filters) may require manual verification after cloning.
 - Rate limits on the Vantage API may apply for very large dashboards.
 

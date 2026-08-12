@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import requests
 import json
 import pprint
@@ -12,6 +14,12 @@ def headers(token):
         "accept": "application/json",
         "authorization": f"Bearer {token}"
     }
+
+def widget_payload(new_token: str, source_widget: dict | None) -> dict:
+    """Return a dashboard widget entry, keeping the source widget's settings."""
+    settings = (source_widget or {}).get("settings")
+    payload = {"widgetable_token": new_token}
+    return {**payload, "settings": settings} if settings else payload
 
 def selector_menu(options, title=None):
     """
@@ -105,12 +113,13 @@ def copy_dashboards(source_api_token, destination_api_token):
         og_dashboard_resp = requests.get(f"{url}/dashboards/{dash_token}", headers=headers(source_api_token))
         og_dashboard = og_dashboard_resp.json()
 
-        # Gather the original widgets (report tokens)
-        tokens = og_dashboard["widget_tokens"]
-        report_names = [w["title"] for w in og_dashboard["widgets"]]
+        # Gather the original widgets; widget_tokens is deprecated, and a
+        # dashboard can legitimately show the same report in two widgets
+        source_widgets = og_dashboard["widgets"]
+        report_names = [w["title"] for w in source_widgets]
 
         print("------")
-        print(len(tokens), "reports to create: ", ", ".join(report_names))
+        print(len(source_widgets), "reports to create: ", ", ".join(report_names))
         print("------")
 
         # Create a folder in the destination to store these new Cost/Resource Reports
@@ -127,7 +136,8 @@ def copy_dashboards(source_api_token, destination_api_token):
         successful_report_names = []
         unsuccessful_report_names = []
 
-        for token in tokens:
+        for source_widget in source_widgets:
+            token = source_widget["widgetable_token"]
             print("------")
             # Resource Report
             if token.startswith("prvdr_rsrc_rprt"):
@@ -155,7 +165,7 @@ def copy_dashboards(source_api_token, destination_api_token):
                     create_new_resource_report = create_new_resource_report_resp.json()
 
                     if create_new_resource_report_resp.status_code == 201:
-                        widget_list.append(create_new_resource_report["token"])
+                        widget_list.append(widget_payload(create_new_resource_report["token"], source_widget))
                         successful_report_names.append(create_new_resource_report["title"])
                         print("Successfully created", create_new_resource_report["title"], 
                               "in destination (", create_new_resource_report["token"], ")")
@@ -209,7 +219,7 @@ def copy_dashboards(source_api_token, destination_api_token):
                     create_new_cost_report = create_new_cost_report_resp.json()
 
                     if create_new_cost_report_resp.status_code == 201:
-                        widget_list.append(create_new_cost_report["token"])
+                        widget_list.append(widget_payload(create_new_cost_report["token"], source_widget))
                         successful_report_names.append(create_new_cost_report["title"])
                         print("Successfully created", create_new_cost_report["title"], 
                               "in destination (", create_new_cost_report["token"], ")")
@@ -252,7 +262,7 @@ def copy_dashboards(source_api_token, destination_api_token):
                     create_new_fcr = create_new_fcr_resp.json()
 
                     if create_new_fcr_resp.status_code == 201:
-                        widget_list.append(create_new_fcr["token"])
+                        widget_list.append(widget_payload(create_new_fcr["token"], source_widget))
                         successful_report_names.append(create_new_fcr["title"])
                         print("Successfully created", create_new_fcr["title"],
                               "in destination (", create_new_fcr["token"], ")")
@@ -293,7 +303,7 @@ def copy_dashboards(source_api_token, destination_api_token):
                     create_new_ker = create_new_ker_resp.json()
 
                     if create_new_ker_resp.status_code == 201:
-                        widget_list.append(create_new_ker["token"])
+                        widget_list.append(widget_payload(create_new_ker["token"], source_widget))
                         successful_report_names.append(create_new_ker["title"])
                         print("Successfully created", create_new_ker["title"],
                               "in destination (", create_new_ker["token"], ")")
@@ -314,16 +324,23 @@ def copy_dashboards(source_api_token, destination_api_token):
                     continue
                     
                 nfr = nfr_resp.json()
-                print("Copying Kubernetes Report:", nfr["title"], f"({nfr['token']})")
+                print("Copying Network Flow Report:", nfr["title"], f"({nfr['token']})")
 
                 # Build the payload for the new Network Flow Report.
                 new_nfr_payload = {
                     "title": nfr["title"],
                     "workspace_token": destination_workspace_token,
-                    "filter": nfr["filter"],
-                    "aggregated_by": nfr["aggregated_by"],
-                    "date_interval": nfr["date_interval"]
+                    "filter": nfr.get("filter"),
+                    # GET returns groupings comma-joined; POST wants an array
+                    "groupings": nfr["groupings"].split(",") if nfr.get("groupings") else None,
+                    "flow_direction": nfr.get("flow_direction"),
+                    "flow_weight": nfr.get("flow_weight"),
+                    "date_interval": nfr.get("date_interval"),
+                    # custom date intervals require both dates on create
+                    "start_date": nfr.get("start_date"),
+                    "end_date": nfr.get("end_date")
                 }
+                new_nfr_payload = {k: v for k, v in new_nfr_payload.items() if v is not None}
 
                 try:
                     create_new_nfr_resp = requests.post(
@@ -334,7 +351,7 @@ def copy_dashboards(source_api_token, destination_api_token):
                     create_new_nfr = create_new_nfr_resp.json()
 
                     if create_new_nfr_resp.status_code == 201:
-                        widget_list.append(create_new_nfr["token"])
+                        widget_list.append(widget_payload(create_new_nfr["token"], source_widget))
                         successful_report_names.append(create_new_nfr["title"])
                         print("Successfully created", create_new_nfr["title"],
                               "in destination (", create_new_nfr["token"], ")")
@@ -352,13 +369,13 @@ def copy_dashboards(source_api_token, destination_api_token):
 
         # Finally, create the new dashboard
         dashboard_payload = {
-            "widget_tokens": widget_list,
+            "widgets": widget_list,
             "title": og_dashboard["title"],
             "workspace_token": destination_workspace_token,
             "date_interval": "last_6_months"  # Or whatever default you prefer
         }
         new_dashboard_resp = requests.post(
-            f"{url}/dashboards/",
+            f"{url}/dashboards",
             json=dashboard_payload,
             headers=headers(destination_api_token)
         )
