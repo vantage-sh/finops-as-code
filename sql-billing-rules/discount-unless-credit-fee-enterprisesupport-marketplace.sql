@@ -2,7 +2,7 @@
 
 
 UPDATE aws
-SET aws.lineItem/UnblendedCost = aws.lineItem/UnblendedCost * '0.095'
+SET aws.lineItem/UnblendedCost = aws.lineItem/UnblendedCost * 0.905
 WHERE 
 aws.lineItem/ProductCode != 'AwsPremiumSupport' 
 AND aws.lineItem/LineItemType != 'Credit' 
