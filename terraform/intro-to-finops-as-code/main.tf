@@ -17,9 +17,9 @@ module "marketing_snowflake" {
 }
 
 resource "vantage_dashboard" "dashboard" {
-  widget_tokens = [
-    module.marketing_aws.marketing_aws_cost_report_token,
-    module.marketing_snowflake.marketing_snowflake_cost_report_token
+  widgets = [
+    { widgetable_token = module.marketing_aws.marketing_aws_cost_report_token },
+    { widgetable_token = module.marketing_snowflake.marketing_snowflake_cost_report_token }
   ]
   title           = "Marketing Dashboard"
   date_interval   = "last_6_months"

@@ -1,0 +1,39 @@
+name: Validate Terraform demos
+
+on:
+  pull_request:
+    paths:
+      - "terraform/**"
+      - ".github/workflows/terraform-validate.yml"
+  push:
+    branches: [main]
+    paths:
+      - "terraform/**"
+      - ".github/workflows/terraform-validate.yml"
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.8"
+
+      - name: Validate every demo directory
+        run: |
+          set -uo pipefail
+          failed=0
+          for dir in $(find terraform -name '*.tf' -not -path '*/.terraform/*' -exec dirname {} \; | sort -u); do
+            echo "::group::${dir}"
+            if (cd "$dir" && terraform init -backend=false -input=false > /dev/null && terraform validate -no-color); then
+              echo "::endgroup::"
+            else
+              echo "::endgroup::"
+              echo "::error::validation failed in ${dir}"
+              failed=1
+            fi
+          done
+          exit "$failed"

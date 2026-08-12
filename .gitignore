@@ -177,6 +177,10 @@ pyrightconfig.json
 # Local .terraform directories
 **/.terraform/*
 
+# Provider lockfiles from running the demos locally. Real infrastructure should
+# commit these; standalone demo dirs should not, so inits stay disposable.
+**/.terraform.lock.hcl
+
 # .tfstate files
 *.tfstate
 *.tfstate.*

@@ -18,9 +18,9 @@ resource "vantage_cost_report" "team_reports" {
 
 resource "vantage_dashboard" "bu_dashboard" {
   for_each        = local.business_units
-  widget_tokens   = [
+  widgets = [
     for cost_center_key, cost_center_info in local.cost_centers :
-    vantage_cost_report.team_reports[cost_center_key].token
+    { widgetable_token = vantage_cost_report.team_reports[cost_center_key].token }
     if cost_center_info.business_unit == each.value
   ]
   title           = "${each.value} Dashboard"
