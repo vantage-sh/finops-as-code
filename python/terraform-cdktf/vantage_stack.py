@@ -1,4 +1,4 @@
-# vantage-stack.py
+# vantage_stack.py
 from constructs import Construct
 from imports.vantage.cost_report import CostReport
 from imports.vantage.folder import Folder

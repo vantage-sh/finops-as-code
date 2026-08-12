@@ -2,7 +2,7 @@ import os
 from constructs import Construct
 from cdktf import App, TerraformStack
 from imports.vantage.provider import VantageProvider
-from vantage-stack import VantageCostStack
+from vantage_stack import VantageCostStack
 
 
 class MyStack(TerraformStack):

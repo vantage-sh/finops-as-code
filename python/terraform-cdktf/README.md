@@ -14,17 +14,14 @@ CDKTF takes the infrastructure you define and synthesizes it into JSON configura
 
 ## Complete the Demo
 
-1. Create a directory for your project and initialize a Python (or your language of choice) CDKTF project. Add the files from this repo to the directory.
+1. Create a directory for your project and initialize a Python (or your language of choice) CDKTF project with the `vantage-sh/vantage` provider. Specify the `local` flag to use local state storage. Initialize first: `cdktf init` refuses to scaffold into a non-empty directory.
 
     ```bash
     mkdir vantage-cdktf-example && cd vantage-cdktf-example 
+    cdktf init --template=python --local --providers="vantage-sh/vantage"
     ``` 
 
-2. Initialize the `vantage-sh/vantage` provider. Specify the `local` flag to use local state storage.
-
-   ```bash
-    cdktf init --template=python --local --providers="vantage-sh/vantage"
-   ```
+2. Add the files from this repo (`main.py` and `vantage_stack.py`) to the directory.
 
 3. Deploy the configuration.
    

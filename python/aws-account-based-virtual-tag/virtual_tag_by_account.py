@@ -4,10 +4,9 @@ import os
 
 
 url = "https://api.vantage.sh/v2/virtual_tag_configs"
-VANTAGE_ACCESS_TOKEN = os.environ.get("VANTAGE_ACCESS_TOKEN")
+VANTAGE_API_TOKEN = os.environ.get("VANTAGE_API_TOKEN")
 
 session = boto3.session.Session()
-client = session.client('sts')
 org = session.client('organizations')
 
 # get list of accounts
@@ -19,7 +18,7 @@ for page in page_iterator:
     for acct in page['Accounts']:
         accounts.append({
             "filter": f"costs.provider = 'aws' AND costs.account_id = '{acct['Id']}'",
-            "name": acct['Name'].replace("'?!", "")
+            "name": "".join(c for c in acct['Name'] if c not in "'?!")
         })
 
 payload = {
@@ -30,13 +29,9 @@ payload = {
 headers = {
     "accept": "application/json",
     "content-type": "application/json",
-    "authorization": f"Bearer {VANTAGE_ACCESS_TOKEN}"
+    "authorization": f"Bearer {VANTAGE_API_TOKEN}"
 }
 
 response = requests.post(url, json=payload, headers=headers)
+response.raise_for_status()
 print(response.text)
-
-
-
-
-
