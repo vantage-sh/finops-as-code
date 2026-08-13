@@ -1,10 +1,10 @@
-# LLM Telemetry Cold Start: OpenAI and Anthropic to Vantage
+# Step 0: Emit Token Cost Allocation records from OpenAI and Anthropic
 
-[Custom LLM Telemetry Enrichment](https://docs.vantage.sh/custom_telemetry) splits your real OpenAI and Anthropic bills across teams, features, or customers, in proportion to per-request token records you write to an S3 bucket. This demo covers the step the docs assume: starting from nothing but an API key, capture usage from each LLM call and produce spec-conformant records Vantage can read.
+[Custom LLM Telemetry Enrichment](https://docs.vantage.sh/custom_telemetry) uses the **Token Cost Allocation Specification**: write one JSON record per LLM request to an S3 bucket you own, and Vantage splits the matching provider bill across the tags those records carry (team, feature, customer, and so on). The docs pick up once you already have records in that schema. This demo is Step 0 — starting from an API key, capture usage from each call and produce spec-conformant `YYYY/MM/DD/*.jsonl.gz` objects Vantage can read.
 
 Three files:
 
-- `emitter.py` builds records from raw API responses, validates them, and writes date-partitioned gzipped NDJSON. The mapping functions are pure and copy-paste portable.
+- `emitter.py` builds Token Cost Allocation records from raw API responses, validates them, and writes date-partitioned gzipped NDJSON. The mapping functions are pure and copy-paste portable.
 - `openai_cold_start.py` and `anthropic_cold_start.py` are complete worked examples: one API call, one record, one object.
 
 ## Prerequisites
@@ -48,11 +48,13 @@ Connect it in Vantage:
 
 1. On the [Integrations page](https://console.vantage.sh/settings/integrations), add a **Custom LLM Enrichment Source** and pick your bucket.
 2. Enter `llm` as the prefix. That is where the writer puts objects. (Different prefix? Pass `prefix=` to `TelemetryWriter` to match.)
-3. Apply the read-access grant the flow gives you (CloudFormation, CLI, or Terraform; it attaches to your existing Vantage AWS role), then click **Check Permissions**.
+3. Apply the read-only grant the flow gives you (CloudFormation, CLI, or Terraform; it attaches to your existing Vantage cross-account AWS role — no new role or credentials), then click **Check Permissions**.
 
 The Anthropic variant is identical with `pip install anthropic` and `ANTHROPIC_API_KEY`.
 
 ## What a record looks like
+
+One JSON object per request, matching the Token Cost Allocation Specification:
 
 ```json
 {
@@ -70,7 +72,15 @@ The Anthropic variant is identical with `pip install anthropic` and `ANTHROPIC_A
 }
 ```
 
-The tags are the whole point. They become cost dimensions in Vantage, so spend groups and filters by `team` or `purpose` exactly like any other tag.
+The tags are the whole point. They become cost dimensions in Vantage, so you can group, filter, budget, and alert by `team` or `purpose` like any other tag.
+
+**`resource_account_id`.** Recommended whenever one bucket carries logs for multiple integrations of the same provider, so each request matches the right costs (for example an OpenAI project or org id). Records are plain dicts — set it before `writer.add()`:
+
+```python
+record["resource_account_id"] = "proj_abc123"
+```
+
+See the schema section in the [Custom Telemetry docs](https://docs.vantage.sh/custom_telemetry) for the full field list.
 
 ## The mapping, and the one trap
 
@@ -189,8 +199,8 @@ Run the checks yourself: `python3 test_emitter.py` (stdlib only).
 - **Failure semantics, stated honestly.** The buffer is in memory; a crash loses whatever was not yet flushed. That is usually acceptable here, because lost telemetry degrades allocation precision, never billing accuracy: uncovered spend lands in the untagged leftover row and totals still reconcile. If you need better, spool records to local disk first. `flush()` is safe to retry: a partial failure keeps the buffer, and re-written days deduplicate by `event_id`.
 - **Retries are already safe.** Re-sending the same records is harmless: Vantage keeps one record per `event_id` per day.
 - **Timestamps.** The writer partitions by the record timestamp's UTC date. The timestamp is when you received the response; if you backfill from stored responses, convert the response's own `created` time (OpenAI) or your logged receipt time instead of `now()`.
-- **Tags hygiene.** Keep request ids, user emails, and conversation ids out of `tags`; they are high-cardinality and some are PII. Never put API keys or secrets in any field.
-- **Other top-level fields.** Records are plain dicts. Assign before `writer.add()`, for example `record["resource_account_id"] = "org-..."` when one bucket serves multiple accounts of the same provider.
+- **Tags hygiene.** Prefer stable, low-cardinality keys (`team`, `environment`, `purpose`). Keep request ids, user emails, and conversation ids out of `tags`; they are high-cardinality and some are PII. Tags are case-sensitive (`team` ≠ `Team`). Never put API keys or secrets in any field.
+- **`resource_account_id`.** Set it when one bucket serves multiple accounts of the same provider so each request joins the right bill (see the callout under [What a record looks like](#what-a-record-looks-like)). Other optional top-level fields (`provider_region`, `api_key_id`, `is_batch`, …) work the same way: assign on the dict before `writer.add()`.
 
 ## Other providers and languages
 
