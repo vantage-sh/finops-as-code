@@ -1,6 +1,6 @@
 # Step 0: Emit Token Cost Allocation records from OpenAI and Anthropic
 
-[Custom LLM Telemetry Enrichment](https://docs.vantage.sh/custom_telemetry) uses the **Token Cost Allocation Specification**: write one JSON record per LLM request to an S3 bucket you own, and Vantage splits the matching provider bill across the tags those records carry (team, feature, customer, and so on). The docs pick up once you already have records in that schema. This demo is Step 0 — starting from an API key, capture usage from each call and produce spec-conformant `YYYY/MM/DD/*.jsonl.gz` objects Vantage can read.
+[Custom LLM Telemetry Enrichment](https://docs.vantage.sh/custom_llm_source) uses the **Token Cost Allocation Specification**: write one JSON record per LLM request to an S3 bucket you own, and Vantage splits the matching provider bill across the tags those records carry (team, feature, customer, and so on). The docs pick up once you already have records in that schema. This demo is Step 0 — starting from an API key, capture usage from each call and produce spec-conformant `YYYY/MM/DD/*.jsonl.gz` objects Vantage can read.
 
 Three files:
 
