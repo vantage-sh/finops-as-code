@@ -16,7 +16,7 @@ Like its close cousin, Infrastructure as Code, FinOps as Code supports automatio
 
 ## About This Repository
 
-This repository contains API Python tutorials (within the `/python` directory) and Terraform tutorials (within the `/terraform` directory). Each demo contains a README with any prerequisites or requirements. 
+This repository contains API Python tutorials (within the `/python` directory), Terraform tutorials (within the `/terraform` directory), and CloudFormation templates for multi-account AWS setups (within the `/cloudformation` directory). Each demo contains a README with any prerequisites or requirements. 
 
 To use the demos provided here, create a local clone of this repo.
 
