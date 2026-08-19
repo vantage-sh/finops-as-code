@@ -1,22 +1,60 @@
 # Enable Bedrock token allocation across your AWS organization
 
-Vantage splits Amazon Bedrock spend by team, application, and environment using
-[Model Invocation Logs](https://docs.aws.amazon.com/bedrock/latest/userguide/model-invocation-logging.html):
-token counts per request, plus any `requestMetadata` your code attaches. Logging is
-off by default, it is a per-account per-region setting, and Bedrock will only write
-to a bucket in the same account and region as the caller. There is no native
-CloudFormation resource and no org-wide switch.
+## What is this doing?
 
-This demo is that switch. One template, deployed as a StackSet from the management
-account, gives every current and future account a log bucket, the delivery policy
-Bedrock needs, logging turned on, and read access for the Vantage role you already
-have.
+This demo is a **multi-account AWS onboarding toolkit** for [Bedrock token allocation](https://www.vantage.sh/blog/llm-token-allocation-preview) in Vantage: splitting Bedrock spend by team, application, and environment using [Model Invocation Logs](https://docs.aws.amazon.com/bedrock/latest/userguide/model-invocation-logging.html). Vantage joins per-request token counts (and any `requestMetadata` your code attaches) to CUR rows so you can group, filter, budget, and alert on Bedrock costs at finer granularity than the bill alone provides.
 
-- `bedrock-logging.yaml` is the stack.
-- `preflight.py` prints where Bedrock actually ran and the StackSet commands to deploy.
-- `verify.py` proves one account is ingestible, then prints the Vantage Connect values.
-- `bedrock.py` is the shared logic. `python3 test_bedrock.py` tests it and the
-  template's embedded Lambdas (stdlib only).
+The problem it solves: Bedrock logging is **off by default**, **per-account and per-region**, has **no native CloudFormation resource**, and **no org-wide switch**. Multi-account customers often never turn it on, so Bedrock spend stays unallocated.
+
+The solution: one CloudFormation template, deployed as a StackSet from the management account, that gives every current and future account a log bucket, the delivery policy Bedrock needs, logging turned on, and read access for the Vantage cross-account role you already have.
+
+| Component | Role |
+| --- | --- |
+| `bedrock-logging.yaml` | CloudFormation stack: S3 bucket, Bedrock delivery policy, custom-resource Lambdas to enable logging, IAM read policy on the Vantage role |
+| `preflight.py` | Management-account planner: Cost Explorer → where Bedrock ran → exact StackSet CLI commands |
+| `verify.py` | Per-account checker: config, delivery, log shape → prints Vantage Connect values |
+| `bedrock.py` | Pure helpers shared by the scripts (paths, record validation, rollout planning) |
+| `test_bedrock.py` | Stdlib tests, including extracting and testing the inline Lambda code from the YAML |
+
+## Architecture
+
+```mermaid
+flowchart TB
+    subgraph mgmt [Management Account]
+        PF[preflight.py]
+        CE[Cost Explorer]
+        ORG[Organizations]
+        SS[StackSet]
+    end
+
+    subgraph member [Member Accounts × Regions]
+        CFN[bedrock-logging.yaml]
+        S3[S3 Log Bucket]
+        BR[Bedrock Logging Config]
+        VR[Vantage Read Policy]
+    end
+
+    subgraph vantage [Vantage]
+        UI[Model Invocation Logs Connect UI]
+    end
+
+    PF --> CE
+    PF --> ORG
+    PF --> SS
+    SS --> CFN
+    CFN --> S3
+    CFN --> BR
+    CFN --> VR
+    S3 --> UI
+    verify.py --> UI
+```
+
+Each stack:
+
+1. Creates (or adopts) an S3 bucket for logs
+2. Uses a Lambda custom resource to call `PutModelInvocationLoggingConfiguration` (S3-only, all four modalities)
+3. Auto-discovers `ConnectToVantage...-CrossAccountRole-...` and attaches read access
+4. **Refuses to overwrite** an existing logging config pointing elsewhere (including CloudWatch)
 
 ## Prerequisites
 
