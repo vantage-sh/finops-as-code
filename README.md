@@ -16,9 +16,27 @@ Like its close cousin, Infrastructure as Code, FinOps as Code supports automatio
 
 ## About This Repository
 
-This repository contains API Python tutorials (within the `/python` directory) and Terraform tutorials (within the `/terraform` directory). Each demo contains a README with any prerequisites or requirements. 
+This repository contains API Python tutorials (within the `/python` directory), Terraform tutorials (within the `/terraform` directory), and CloudFormation templates for multi-account AWS setups (within the `/cloudformation` directory). Each demo contains a README with any prerequisites or requirements. 
 
 To use the demos provided here, create a local clone of this repo.
+
+## Python Dependencies
+
+Each Python demo's README names the one or two packages that demo needs, so you can install only those:
+
+```bash
+pip install boto3
+```
+
+If you would rather have one environment that runs every Python demo, the root `pyproject.toml` lists them all. With [uv](https://docs.astral.sh/uv/):
+
+```bash
+uv sync
+```
+
+`uv sync` matches the environment to that file exactly, so it removes packages it does not declare. To add them alongside what you already have, use `uv pip install -r pyproject.toml` instead.
+
+Two demos generate their provider package with a CLI rather than installing it from PyPI, so it is not in `pyproject.toml`: `pulumi/intro-to-pulumi` uses `pulumi package add`, and `python/terraform-cdktf` uses `cdktf get`. Each README covers the step.
 
 ## Vantage API Authentication
 
