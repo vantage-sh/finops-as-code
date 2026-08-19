@@ -20,6 +20,24 @@ This repository contains API Python tutorials (within the `/python` directory), 
 
 To use the demos provided here, create a local clone of this repo.
 
+## Python Dependencies
+
+Each Python demo's README names the one or two packages that demo needs, so you can install only those:
+
+```bash
+pip install boto3
+```
+
+If you would rather have one environment that runs every Python demo, the root `pyproject.toml` lists them all. With [uv](https://docs.astral.sh/uv/):
+
+```bash
+uv sync
+```
+
+`uv sync` matches the environment to that file exactly, so it removes packages it does not declare. To add them alongside what you already have, use `uv pip install -r pyproject.toml` instead.
+
+Two demos generate their provider package with a CLI rather than installing it from PyPI, so it is not in `pyproject.toml`: `pulumi/intro-to-pulumi` uses `pulumi package add`, and `python/terraform-cdktf` uses `cdktf get`. Each README covers the step.
+
 ## Vantage API Authentication
 
 Each demo requires access to the Vantage API. Follow the steps in the [Vantage API documentation](https://docs.vantage.sh/api/authentication) on how to create a user authentication token.
