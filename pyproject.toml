@@ -1,0 +1,48 @@
+[project]
+name = "finops-as-code"
+version = "0"
+description = "Every third-party package the demos in this repo import, so one uv sync sets up an environment that can run all of them."
+requires-python = ">=3.11"
+
+# Grouped by the demo that imports them. Nothing here is needed to USE the
+# demos in isolation, each README still names the one or two packages that
+# demo wants; this file exists so the whole repo runs from a single sync.
+dependencies = [
+    # cloudformation/bedrock-token-allocation, python/aws-account-based-virtual-tag,
+    # python/llm-telemetry-cold-start. botocore is listed because preflight.py and
+    # verify.py import it directly, not just through boto3.
+    "boto3",
+    "botocore",
+    # python/llm-telemetry-cold-start
+    "anthropic",
+    "openai",
+    # python/automate-unit-economics, aws-account-based-virtual-tag,
+    # dashboard-replicator, explore-active-resources, jira-vantage
+    "requests",
+    # python/automate-unit-economics. The binary wheel avoids needing pg_config
+    # and Postgres headers just to read a demo.
+    "psycopg2-binary",
+    # python/dashboard-replicator
+    "simple-term-menu",
+    # python/explore-active-resources (a Jupyter notebook)
+    "matplotlib",
+    "pandas",
+    "seaborn",
+    "ipykernel",
+    # python/terraform-cdktf. Running it also needs the Terraform and cdktf CLIs,
+    # and `cdktf get` to generate the local imports/ package.
+    "cdktf",
+    "constructs",
+    # pulumi/intro-to-pulumi. Running it also needs the Pulumi CLI.
+    "pulumi",
+]
+
+# Deliberately absent, because neither comes from PyPI. Both are generated into
+# the demo directory by a CLI and will not resolve if you add them here:
+#   pulumi_vantage  ->  pulumi package add terraform-provider vantage-sh/vantage
+#   imports         ->  cdktf get
+
+[tool.uv]
+# This repo is a collection of demos, not an installable package, so uv should
+# resolve and install the dependencies without trying to build the root.
+package = false

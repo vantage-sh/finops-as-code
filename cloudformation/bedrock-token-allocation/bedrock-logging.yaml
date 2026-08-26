@@ -1,0 +1,326 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Enable Amazon Bedrock Model Invocation Logging to S3 in this account and
+  region, and grant the Vantage cross-account role read access to the logs.
+  Deployable standalone or org-wide as a service-managed StackSet. The
+  logging configuration is never overwritten if it already points somewhere
+  else, and the log bucket is retained on stack deletion.
+
+Parameters:
+  ExistingLogBucket:
+    Type: String
+    Default: ""
+    Description: >-
+      Name of an S3 bucket in this account and region that already holds (or
+      should hold) Bedrock model invocation logs. Leave blank to create a
+      dedicated bucket named bedrock-mil-logs-<account>-<region>. Note that a
+      bucket this stack created earlier and retained on delete must be
+      re-adopted this way on a second deploy.
+  KeyPrefix:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^[^/].*/$"
+    ConstraintDescription: must be empty, or end with "/" and not start with one
+    Description: >-
+      Optional S3 key prefix the logging configuration writes under, WITH a
+      trailing slash (for example "bedrock/"). Leave blank to log at the
+      bucket root. Must match an existing configuration's prefix when
+      adopting one via ExistingLogBucket.
+  VantageCrossAccountRole:
+    Type: String
+    Default: ""
+    Description: >-
+      Name of the Vantage cross-account IAM role (ConnectToVantage...-CrossAccountRole-...).
+      Leave blank to discover it automatically, which is required when
+      deploying as a StackSet since the name differs per account.
+
+Conditions:
+  CreateBucket: !Equals [!Ref ExistingLogBucket, ""]
+  DiscoverRole: !Equals [!Ref VantageCrossAccountRole, ""]
+
+Resources:
+  LoggingBucket:
+    Type: AWS::S3::Bucket
+    Condition: CreateBucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub "bedrock-mil-logs-${AWS::AccountId}-${AWS::Region}"
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  LoggingBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Condition: CreateBucket
+    Properties:
+      Bucket: !Ref LoggingBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowBedrockLogDelivery
+            Effect: Allow
+            Principal:
+              Service: bedrock.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub "${LoggingBucket.Arn}/${KeyPrefix}AWSLogs/${AWS::AccountId}/BedrockModelInvocationLogs/*"
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:*"
+
+  ConfigFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: BedrockLoggingConfig
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:GetModelInvocationLoggingConfiguration
+                  - bedrock:PutModelInvocationLoggingConfiguration
+                  - bedrock:DeleteModelInvocationLoggingConfiguration
+                Resource: "*"
+              - Effect: Allow
+                Action: iam:ListRoles
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:*"
+
+  EnableLoggingFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Enables Bedrock model invocation logging without overwriting an existing configuration.
+      Handler: index.handler
+      Runtime: python3.13
+      Timeout: 120
+      Role: !GetAtt ConfigFunctionRole.Arn
+      Code:
+        # desired_config/destination/matches_ours/decide are pure;
+        # test_bedrock.py extracts this block and tests them directly.
+        # Inline ZipFile has a hard 4096-character limit; stay well under it.
+        ZipFile: |
+          import json
+          import time
+          import urllib.request
+
+          import boto3
+
+          def desired_config(bucket: str, prefix: str) -> dict:
+              """Return the S3-only config we ask Bedrock for."""
+              s3 = {"bucketName": bucket, **({"keyPrefix": prefix} if prefix else {})}
+              return {"s3Config": s3, **{f"{k}DataDeliveryEnabled": True
+                                         for k in ("text", "image", "embedding", "video")}}
+
+          def destination(config: dict | None) -> tuple:
+              """Return (bucket, prefix) a config writes to."""
+              s3 = (config or {}).get("s3Config") or {}
+              return (s3.get("bucketName"), s3.get("keyPrefix", ""))
+
+          def matches_ours(config: dict | None, bucket: str, prefix: str) -> bool:
+              """True when config is exactly ours: our S3 target, no CloudWatch."""
+              return (bool(config) and destination(config) == (bucket, prefix)
+                      and not config.get("cloudWatchConfig"))
+
+          def decide(current: dict | None, bucket: str, prefix: str,
+                     old: tuple | None = None) -> str:
+              """Return put, noop, or conflict; old is the stack's previous (bucket, prefix)."""
+              if not current:
+                  return "put"
+              if matches_ours(current, bucket, prefix):
+                  wanted = desired_config(bucket, prefix)
+                  return "noop" if all(current.get(k) == v for k, v in wanted.items()) else "put"
+              if old is not None and matches_ours(current, old[0], old[1]):
+                  return "put"
+              return "conflict"
+
+          def respond(event: dict, context, status: str, data: dict, reason: str = "") -> None:
+              """Send the result to CloudFormation with retries; never raises."""
+              body = json.dumps({
+                  "Status": status, "Reason": reason[:900] or context.log_stream_name,
+                  "PhysicalResourceId": event.get("PhysicalResourceId") or context.log_stream_name,
+                  "StackId": event["StackId"], "RequestId": event["RequestId"],
+                  "LogicalResourceId": event["LogicalResourceId"], "Data": data}).encode()
+              for wait in (1, 5, 0):
+                  try:
+                      urllib.request.urlopen(urllib.request.Request(
+                          event["ResponseURL"], data=body, method="PUT",
+                          headers={"Content-Type": ""}), timeout=25)
+                      return
+                  except Exception:
+                      time.sleep(wait)
+
+          def enable_logging(req_type: str, bucket: str, prefix: str,
+                             old: tuple | None) -> dict:
+              """Apply or remove our config; never clobber anyone else's."""
+              client = boto3.client("bedrock")
+              current = client.get_model_invocation_logging_configuration().get("loggingConfig")
+              if req_type == "Delete":
+                  if matches_ours(current, bucket, prefix):
+                      client.delete_model_invocation_logging_configuration()
+                  return {}
+              verdict = decide(current, bucket, prefix, old)
+              if verdict == "conflict":
+                  raise RuntimeError(
+                      f"logging already points at {destination(current)} or CloudWatch; "
+                      "pass that bucket (and its key prefix) as ExistingLogBucket/KeyPrefix, "
+                      "or remove the other config first")
+              if verdict == "put":
+                  client.put_model_invocation_logging_configuration(
+                      loggingConfig=desired_config(bucket, prefix))
+              return {"Bucket": bucket, "Applied": verdict}
+
+          def handler(event: dict, context) -> None:
+              """Route the event and always answer CloudFormation."""
+              props = event.get("ResourceProperties", {})
+              old_props = event.get("OldResourceProperties") or {}
+              old = ((old_props["BucketName"], old_props.get("KeyPrefix", ""))
+                     if old_props.get("BucketName") else None)
+              try:
+                  data = enable_logging(event["RequestType"], props["BucketName"],
+                                        props.get("KeyPrefix", ""), old)
+                  respond(event, context, "SUCCESS", data)
+              except Exception as error:
+                  respond(event, context, "FAILED", {}, reason=str(error))
+
+  RoleLookupFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Finds the ConnectToVantage cross-account role in this account, for StackSet deploys where the name differs per account.
+      Handler: index.handler
+      Runtime: python3.13
+      Timeout: 120
+      Role: !GetAtt ConfigFunctionRole.Arn
+      Code:
+        # vantage_role_names is pure; test_bedrock.py extracts and tests it.
+        ZipFile: |
+          import json
+          import time
+          import urllib.request
+
+          import boto3
+
+          def vantage_role_names(names: list) -> list:
+              """Return names matching the Vantage cross-account role pattern."""
+              return [n for n in names
+                      if n.startswith("ConnectToVantage") and "-CrossAccountRole-" in n]
+
+          def respond(event: dict, context, status: str, data: dict, reason: str = "") -> None:
+              """Send the result to CloudFormation with retries; never raises."""
+              body = json.dumps({
+                  "Status": status, "Reason": reason[:900] or context.log_stream_name,
+                  "PhysicalResourceId": event.get("PhysicalResourceId") or context.log_stream_name,
+                  "StackId": event["StackId"], "RequestId": event["RequestId"],
+                  "LogicalResourceId": event["LogicalResourceId"], "Data": data}).encode()
+              for wait in (1, 5, 0):
+                  try:
+                      urllib.request.urlopen(urllib.request.Request(
+                          event["ResponseURL"], data=body, method="PUT",
+                          headers={"Content-Type": ""}), timeout=25)
+                      return
+                  except Exception:
+                      time.sleep(wait)
+
+          def find_vantage_roles(req_type: str) -> dict:
+              """Return every ConnectToVantage role in this account, name-sorted."""
+              if req_type == "Delete":
+                  return {}
+              pages = boto3.client("iam").get_paginator("list_roles").paginate()
+              matches = vantage_role_names(
+                  [role["RoleName"] for page in pages for role in page["Roles"]])
+              if not matches:
+                  raise RuntimeError(
+                      "no ConnectToVantage role in this account; deploy the Vantage AWS "
+                      "integration first, or pass VantageCrossAccountRole")
+              return {"RoleNames": ",".join(sorted(matches))}
+
+          def handler(event: dict, context) -> None:
+              """Route the event and always answer CloudFormation."""
+              try:
+                  respond(event, context, "SUCCESS", find_vantage_roles(event["RequestType"]))
+              except Exception as error:
+                  respond(event, context, "FAILED", {}, reason=str(error))
+
+  VantageRoleLookup:
+    Type: Custom::VantageRoleLookup
+    Condition: DiscoverRole
+    Properties:
+      ServiceToken: !GetAtt RoleLookupFunction.Arn
+
+  LoggingConfiguration:
+    Type: Custom::BedrockLoggingConfiguration
+    Properties:
+      ServiceToken: !GetAtt EnableLoggingFunction.Arn
+      BucketName: !If [CreateBucket, !Ref LoggingBucket, !Ref ExistingLogBucket]
+      KeyPrefix: !Ref KeyPrefix
+      # Unused by the Lambda; the !Ref orders this resource after the bucket
+      # policy, which must exist before Bedrock validates the Put. With an
+      # ExistingLogBucket the policy resource is absent and no ordering is needed.
+      BucketPolicyDependency: !If [CreateBucket, !Ref LoggingBucketPolicy, !Ref "AWS::NoValue"]
+
+  VantageReadPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      # Inline policy names must be unique per role, and every region's stack
+      # attaches to the same account-wide Vantage role, so the region is part of the name.
+      PolicyName: !Sub "BedrockModelInvocationLogsRead-${AWS::Region}"
+      # Fn::Split keeps this a List<String> for validation; a custom resource's
+      # list attribute is not accepted directly in a property that expects one.
+      Roles: !Split
+        - ","
+        - !If [DiscoverRole, !GetAtt VantageRoleLookup.RoleNames, !Ref VantageCrossAccountRole]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:GetObjectAcl
+            Resource: !Sub
+              - "arn:${AWS::Partition}:s3:::${Bucket}/${KeyPrefix}AWSLogs/${AWS::AccountId}/BedrockModelInvocationLogs/*"
+              - Bucket: !If [CreateBucket, !Ref LoggingBucket, !Ref ExistingLogBucket]
+          - Effect: Allow
+            Action: s3:ListBucket
+            Resource: !Sub
+              - "arn:${AWS::Partition}:s3:::${Bucket}"
+              - Bucket: !If [CreateBucket, !Ref LoggingBucket, !Ref ExistingLogBucket]
+            Condition:
+              StringLike:
+                s3:prefix: !Sub "${KeyPrefix}AWSLogs/${AWS::AccountId}/BedrockModelInvocationLogs/*"
+          - Effect: Allow
+            Action: bedrock:GetModelInvocationLoggingConfiguration
+            Resource: "*"
+
+Outputs:
+  LogBucket:
+    Description: Bucket receiving model invocation logs in this account and region.
+    Value: !If [CreateBucket, !Ref LoggingBucket, !Ref ExistingLogBucket]
+  VantageConnectPrefix:
+    Description: Prefix to enter in the Vantage UI when connecting this account (auto-resolved there, shown for reference).
+    Value: !Sub "${KeyPrefix}AWSLogs/${AWS::AccountId}/BedrockModelInvocationLogs/${AWS::Region}/"
+  VantageRolesGranted:
+    Description: Vantage cross-account role(s) that received read access.
+    Value: !If [DiscoverRole, !GetAtt VantageRoleLookup.RoleNames, !Ref VantageCrossAccountRole]
