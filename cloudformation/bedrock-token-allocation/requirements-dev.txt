@@ -1,0 +1,2 @@
+# Runtime boto3 is supplied by the repo environment or `pip install boto3`.
+PyYAML>=6.0,<7
