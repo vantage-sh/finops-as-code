@@ -28,6 +28,8 @@ def config_problems(config: dict) -> list[str]:
     problems = [problem for entry in entries for problem in entry_problems(entry)]
     if problems:
         return problems
+    if len({region_partition(entry["region"]) for entry in entries}) != 1:
+        problems.append("source and central regions must belong to the same AWS partition")
     central_kms = config["central"].get("kms", False)
     if type(central_kms) is not bool:
         problems.append("central.kms must be true or false")
@@ -55,19 +57,35 @@ def entry_problems(entry: dict) -> list[str]:
     region = entry.get("region", "")
     if not isinstance(region, str) or not deployable_region(region):
         problems.append("each entry needs an explicit AWS region")
+    elif region_partition(region) is None:
+        problems.append("region must belong to the aws, aws-cn, or aws-us-gov partition")
     stack_name = entry.get("stack_name", "")
     if not isinstance(stack_name, str) or not re.fullmatch(r"[a-zA-Z][a-zA-Z0-9-]{0,127}",
                                                             stack_name):
         problems.append("each stack_name must start with a letter and use letters/digits/hyphens")
     bucket = entry.get("bucket_name", "")
-    if not isinstance(bucket, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,61}[a-z0-9]", bucket):
-        problems.append("use a 3-63 character bucket_name with lowercase letters/digits/hyphens")
+    if not isinstance(bucket, str) or not re.fullmatch(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]", bucket):
+        problems.append("use a 3-63 character bucket_name with lowercase letters/digits/dots/hyphens")
+    elif ".." in bucket:
+        problems.append("bucket_name must not contain adjacent dots")
+    elif re.fullmatch(r"\d{1,3}(?:\.\d{1,3}){3}", bucket):
+        problems.append("bucket_name must not be formatted as an IP address")
+    elif bucket.endswith(".mrap"):
+        problems.append("bucket_name must not end with the reserved .mrap suffix")
     retention = entry.get("retention_days", 0)
     if type(retention) is not int or not 0 <= retention <= 3650:
         problems.append("retention_days must be an integer from 0 to 3650; 0 retains data")
     if entry.get("profile") is not None and not isinstance(entry.get("profile"), str):
         problems.append("profile must be an AWS profile name")
     return problems
+
+
+def region_partition(region: str) -> str | None:
+    """Resolve supported AWS partition patterns without assuming unknown regions are commercial."""
+    patterns = {"aws": r"(?:us|eu|ap|sa|ca|me|af|il|mx)-[a-z]+-\d+",
+                "aws-cn": r"cn-[a-z]+-\d+", "aws-us-gov": r"us-gov-[a-z]+-\d+"}
+    return next((partition for partition, pattern in patterns.items()
+                 if re.fullmatch(pattern, region)), None)
 
 
 def source_problems(source: dict) -> list[str]:
@@ -77,8 +95,8 @@ def source_problems(source: dict) -> list[str]:
         problems.append("deploy.py manages new source buckets; use the template's Reuse mode "
                         "for existing buckets")
     prefix = source.get("key_prefix", "")
-    malformed = prefix and (not prefix.endswith("/") or prefix.startswith("/"))
-    if not isinstance(prefix, str) or malformed:
+    if (not isinstance(prefix, str)
+            or (prefix and (not prefix.endswith("/") or prefix.startswith("/")))):
         problems.append("key_prefix must be empty or end with / without a leading /")
     if not isinstance(source.get("vantage_role", ""), str):
         problems.append("vantage_role must be a role name string, or omitted to discover one")
@@ -144,13 +162,16 @@ def deployment_units(config: dict) -> list[dict]:
 def source_unit(source: dict, config: dict, role_prefix: str) -> dict:
     """Return one original-bucket stack intent with a central replication destination."""
     central = config["central"]
+    partition = region_partition(central["region"])
+    if partition is None:
+        raise ValueError("central region must belong to a supported AWS partition")
     parameters = {
         "LogBucketName": source["bucket_name"],
         "KeyPrefix": source.get("key_prefix", ""),
         "LoggingMode": "Managed",
         "VantageCrossAccountRole": source.get("vantage_role", ""),
         "ReplicationRoleNamePrefix": role_prefix,
-        "ReplicationDestinationBucketArn": f"arn:aws:s3:::{central['bucket_name']}",
+        "ReplicationDestinationBucketArn": f"arn:{partition}:s3:::{central['bucket_name']}",
         "ReplicationDestinationAccountId": central["account_id"],
         "ReplicationDestinationKmsKeyArn": "@central.ReplicationDestinationKmsKeyArn",
         "LogKmsKeyArn": source.get("kms_key_arn", ""),
