@@ -190,7 +190,8 @@ Resources:
 
   ReplicationRole:
     Type: AWS::IAM::Role
-    Condition: Replicate
+    # Keep ownership when replication is disabled; a retained fixed name cannot be recreated.
+    Condition: CreateBucket
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
@@ -201,38 +202,40 @@ Resources:
           - Effect: Allow
             Principal: {Service: s3.amazonaws.com}
             Action: sts:AssumeRole
-      Policies:
-        - PolicyName: ReplicateBedrockInvocationLogs
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action: [s3:GetReplicationConfiguration, s3:ListBucket]
-                Resource: !Sub
-                  - "arn:${AWS::Partition}:s3:::${Bucket}"
-                  - Bucket: !If [NamedBucket, !Ref LogBucketName, !Sub "bedrock-mil-logs-${AWS::AccountId}-${AWS::Region}"]
-              - Effect: Allow
-                Action: [s3:GetObjectVersionForReplication, s3:GetObjectVersionAcl, s3:GetObjectVersionTagging]
-                Resource: !Sub
-                  - "arn:${AWS::Partition}:s3:::${Bucket}/${KeyPrefix}AWSLogs/${AWS::AccountId}/BedrockModelInvocationLogs/${AWS::Region}/*"
-                  - Bucket: !If [NamedBucket, !Ref LogBucketName, !Sub "bedrock-mil-logs-${AWS::AccountId}-${AWS::Region}"]
-              - Effect: Allow
-                Action: [s3:ReplicateObject, s3:ReplicateTags]
-                Resource: !Sub "${ReplicationDestinationBucketArn}/${KeyPrefix}AWSLogs/${AWS::AccountId}/BedrockModelInvocationLogs/${AWS::Region}/*"
-              - !If
-                - SourceKms
+      Policies: !If
+        - Replicate
+        - - PolicyName: ReplicateBedrockInvocationLogs
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
                 - Effect: Allow
-                  Action: kms:Decrypt
-                  Resource: !Ref LogKmsKeyArn
-                  Condition:
-                    StringEquals: {"kms:ViaService": !Sub "s3.${AWS::Region}.${AWS::URLSuffix}"}
-                - !Ref AWS::NoValue
-              - !If
-                - DestinationKms
+                  Action: [s3:GetReplicationConfiguration, s3:ListBucket]
+                  Resource: !Sub
+                    - "arn:${AWS::Partition}:s3:::${Bucket}"
+                    - Bucket: !If [NamedBucket, !Ref LogBucketName, !Sub "bedrock-mil-logs-${AWS::AccountId}-${AWS::Region}"]
                 - Effect: Allow
-                  Action: [kms:Encrypt, kms:GenerateDataKey]
-                  Resource: !Ref ReplicationDestinationKmsKeyArn
-                - !Ref AWS::NoValue
+                  Action: [s3:GetObjectVersionForReplication, s3:GetObjectVersionAcl, s3:GetObjectVersionTagging]
+                  Resource: !Sub
+                    - "arn:${AWS::Partition}:s3:::${Bucket}/${KeyPrefix}AWSLogs/${AWS::AccountId}/BedrockModelInvocationLogs/${AWS::Region}/*"
+                    - Bucket: !If [NamedBucket, !Ref LogBucketName, !Sub "bedrock-mil-logs-${AWS::AccountId}-${AWS::Region}"]
+                - Effect: Allow
+                  Action: [s3:ReplicateObject, s3:ReplicateTags]
+                  Resource: !Sub "${ReplicationDestinationBucketArn}/${KeyPrefix}AWSLogs/${AWS::AccountId}/BedrockModelInvocationLogs/${AWS::Region}/*"
+                - !If
+                  - SourceKms
+                  - Effect: Allow
+                    Action: kms:Decrypt
+                    Resource: !Ref LogKmsKeyArn
+                    Condition:
+                      StringEquals: {"kms:ViaService": !Sub "s3.${AWS::Region}.${AWS::URLSuffix}"}
+                  - !Ref AWS::NoValue
+                - !If
+                  - DestinationKms
+                  - Effect: Allow
+                    Action: [kms:Encrypt, kms:GenerateDataKey]
+                    Resource: !Ref ReplicationDestinationKmsKeyArn
+                  - !Ref AWS::NoValue
+        - !Ref AWS::NoValue
 
   ConfigFunctionRole:
     Type: AWS::IAM::Role
@@ -284,11 +287,22 @@ Resources:
 
 
           def managed_logging_config(bucket: str, prefix: str) -> dict:
-              """Return the fresh-stack S3 configuration without a CloudWatch destination."""
+              """Return the S3 configuration enabling every supported data-delivery type."""
               s3 = {"bucketName": bucket, **({"keyPrefix": prefix} if prefix else {})}
               return {"s3Config": s3, "textDataDeliveryEnabled": True,
                       "imageDataDeliveryEnabled": True, "embeddingDataDeliveryEnabled": True,
-                      "videoDataDeliveryEnabled": True}
+                      "videoDataDeliveryEnabled": True, "audioDataDeliveryEnabled": True}
+
+
+          def versioned_managed_config(properties: dict) -> dict:
+              """Resolve the declared schema while preserving pre-audio resource event behavior."""
+              wanted = managed_logging_config(properties["BucketName"], properties.get("KeyPrefix", ""))
+              version = str(properties.get("LoggingConfigurationVersion", "1"))
+              if version == "2":
+                  return wanted
+              if version == "1":
+                  return {key: value for key, value in wanted.items() if key != "audioDataDeliveryEnabled"}
+              raise ValueError("LoggingConfigurationVersion must be 1 or 2.")
 
 
           def stack_digest(stack_id: str) -> str:
@@ -304,7 +318,7 @@ Resources:
           def config_matches_managed(current: dict | None, wanted: dict) -> bool:
               """Return whether the configuration has only the settings this stack manages."""
               actual = dict(current or {})
-              if actual.get("audioDataDeliveryEnabled") is False:
+              if "audioDataDeliveryEnabled" not in wanted and actual.get("audioDataDeliveryEnabled") is False:
                   actual.pop("audioDataDeliveryEnabled")
               if logging_destination(actual) != logging_destination(wanted):
                   return False
@@ -331,7 +345,7 @@ Resources:
                              old_properties: dict, physical_id: str, stack_id: str) -> dict:
               """Return the safe action and ownership marker without changing any input."""
               bucket, prefix = properties["BucketName"], properties.get("KeyPrefix", "")
-              wanted = managed_logging_config(bucket, prefix)
+              wanted = versioned_managed_config(properties)
               if request_type not in {"Create", "Update", "Delete"}:
                   raise ValueError("Unknown CloudFormation request type.")
               mode = properties.get("LoggingMode", "Managed")
@@ -356,8 +370,7 @@ Resources:
                   return {**result, "physical_id": owned_resource_id(stack_id)}
               if request_type == "Update" and config_matches_managed(current, wanted):
                   return result
-              old_wanted = managed_logging_config(old_properties.get("BucketName", bucket),
-                                                  old_properties.get("KeyPrefix", ""))
+              old_wanted = versioned_managed_config({"BucketName": bucket, **old_properties})
               if owned and config_matches_managed(current, old_wanted):
                   return {**result, "action": "put"}
               raise ValueError(CONFLICT)
@@ -439,11 +452,22 @@ Resources:
 
 
           def managed_logging_config(bucket: str, prefix: str) -> dict:
-              """Return the fresh-stack S3 configuration without a CloudWatch destination."""
+              """Return the S3 configuration enabling every supported data-delivery type."""
               s3 = {"bucketName": bucket, **({"keyPrefix": prefix} if prefix else {})}
               return {"s3Config": s3, "textDataDeliveryEnabled": True,
                       "imageDataDeliveryEnabled": True, "embeddingDataDeliveryEnabled": True,
-                      "videoDataDeliveryEnabled": True}
+                      "videoDataDeliveryEnabled": True, "audioDataDeliveryEnabled": True}
+
+
+          def versioned_managed_config(properties: dict) -> dict:
+              """Resolve the declared schema while preserving pre-audio resource event behavior."""
+              wanted = managed_logging_config(properties["BucketName"], properties.get("KeyPrefix", ""))
+              version = str(properties.get("LoggingConfigurationVersion", "1"))
+              if version == "2":
+                  return wanted
+              if version == "1":
+                  return {key: value for key, value in wanted.items() if key != "audioDataDeliveryEnabled"}
+              raise ValueError("LoggingConfigurationVersion must be 1 or 2.")
 
 
           def stack_digest(stack_id: str) -> str:
@@ -459,7 +483,7 @@ Resources:
           def config_matches_managed(current: dict | None, wanted: dict) -> bool:
               """Return whether the configuration has only the settings this stack manages."""
               actual = dict(current or {})
-              if actual.get("audioDataDeliveryEnabled") is False:
+              if "audioDataDeliveryEnabled" not in wanted and actual.get("audioDataDeliveryEnabled") is False:
                   actual.pop("audioDataDeliveryEnabled")
               if logging_destination(actual) != logging_destination(wanted):
                   return False
@@ -486,7 +510,7 @@ Resources:
                              old_properties: dict, physical_id: str, stack_id: str) -> dict:
               """Return the safe action and ownership marker without changing any input."""
               bucket, prefix = properties["BucketName"], properties.get("KeyPrefix", "")
-              wanted = managed_logging_config(bucket, prefix)
+              wanted = versioned_managed_config(properties)
               if request_type not in {"Create", "Update", "Delete"}:
                   raise ValueError("Unknown CloudFormation request type.")
               mode = properties.get("LoggingMode", "Managed")
@@ -511,8 +535,7 @@ Resources:
                   return {**result, "physical_id": owned_resource_id(stack_id)}
               if request_type == "Update" and config_matches_managed(current, wanted):
                   return result
-              old_wanted = managed_logging_config(old_properties.get("BucketName", bucket),
-                                                  old_properties.get("KeyPrefix", ""))
+              old_wanted = versioned_managed_config({"BucketName": bucket, **old_properties})
               if owned and config_matches_managed(current, old_wanted):
                   return {**result, "action": "put"}
               raise ValueError(CONFLICT)
@@ -582,6 +605,7 @@ Resources:
       BucketName: !If [CreateBucket, !Ref LoggingBucket, !Ref ExistingLogBucket]
       KeyPrefix: !Ref KeyPrefix
       LoggingMode: !Ref LoggingMode
+      LoggingConfigurationVersion: "2"
       OwnsLogBucket: !If [CreateBucket, "true", "false"]
       RetainLoggingOnDelete: !Ref RetainLoggingOnDelete
       BucketPolicyDependency: !If [CreateBucket, !Ref LoggingBucketPolicy, !Ref AWS::NoValue]

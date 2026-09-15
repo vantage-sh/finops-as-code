@@ -17,11 +17,22 @@ def logging_destination(config: dict | None) -> tuple[str | None, str]:
 
 
 def managed_logging_config(bucket: str, prefix: str) -> dict:
-    """Return the fresh-stack S3 configuration without a CloudWatch destination."""
+    """Return the S3 configuration enabling every supported data-delivery type."""
     s3 = {"bucketName": bucket, **({"keyPrefix": prefix} if prefix else {})}
     return {"s3Config": s3, "textDataDeliveryEnabled": True,
             "imageDataDeliveryEnabled": True, "embeddingDataDeliveryEnabled": True,
-            "videoDataDeliveryEnabled": True}
+            "videoDataDeliveryEnabled": True, "audioDataDeliveryEnabled": True}
+
+
+def versioned_managed_config(properties: dict) -> dict:
+    """Resolve the declared schema while preserving pre-audio resource event behavior."""
+    wanted = managed_logging_config(properties["BucketName"], properties.get("KeyPrefix", ""))
+    version = str(properties.get("LoggingConfigurationVersion", "1"))
+    if version == "2":
+        return wanted
+    if version == "1":
+        return {key: value for key, value in wanted.items() if key != "audioDataDeliveryEnabled"}
+    raise ValueError("LoggingConfigurationVersion must be 1 or 2.")
 
 
 def stack_digest(stack_id: str) -> str:
@@ -37,7 +48,7 @@ def owned_resource_id(stack_id: str) -> str:
 def config_matches_managed(current: dict | None, wanted: dict) -> bool:
     """Return whether the configuration has only the settings this stack manages."""
     actual = dict(current or {})
-    if actual.get("audioDataDeliveryEnabled") is False:
+    if "audioDataDeliveryEnabled" not in wanted and actual.get("audioDataDeliveryEnabled") is False:
         actual.pop("audioDataDeliveryEnabled")
     if logging_destination(actual) != logging_destination(wanted):
         return False
@@ -64,7 +75,7 @@ def logging_change(request_type: str, current: dict | None, properties: dict,
                    old_properties: dict, physical_id: str, stack_id: str) -> dict:
     """Return the safe action and ownership marker without changing any input."""
     bucket, prefix = properties["BucketName"], properties.get("KeyPrefix", "")
-    wanted = managed_logging_config(bucket, prefix)
+    wanted = versioned_managed_config(properties)
     if request_type not in {"Create", "Update", "Delete"}:
         raise ValueError("Unknown CloudFormation request type.")
     mode = properties.get("LoggingMode", "Managed")
@@ -89,8 +100,7 @@ def logging_change(request_type: str, current: dict | None, properties: dict,
         return {**result, "physical_id": owned_resource_id(stack_id)}
     if request_type == "Update" and config_matches_managed(current, wanted):
         return result
-    old_wanted = managed_logging_config(old_properties.get("BucketName", bucket),
-                                        old_properties.get("KeyPrefix", ""))
+    old_wanted = versioned_managed_config({"BucketName": bucket, **old_properties})
     if owned and config_matches_managed(current, old_wanted):
         return {**result, "action": "put"}
     raise ValueError(CONFLICT)

@@ -117,6 +117,29 @@ class TemplateSafetyTests(unittest.TestCase):
         self.assertEqual(template["Resources"]["LoggingBucket"]["Condition"], "CreateBucket")
         self.assertEqual(template["Resources"]["LoggingBucketPolicy"]["Condition"], "CreateBucket")
 
+    def test_generated_resource_requests_audio_on_create_and_owned_upgrade(self) -> None:
+        """The template must send the schema change that makes CloudFormation enable audio."""
+        resources = load_template("bedrock-logging")["Resources"]
+        namespace = {}
+        exec(compile(resources["EnableLoggingFunction"]["Properties"]["Code"]["ZipFile"],
+                     "index.py", "exec"), namespace)
+        properties = {**resources["LoggingConfiguration"]["Properties"],
+                      "BucketName": "source-logs", "KeyPrefix": "demo/",
+                      "LoggingMode": "Managed", "OwnsLogBucket": "true"}
+        stack_id = "arn:aws:cloudformation:us-east-1:111111111111:stack/demo/unique-id"
+        create = namespace["logging_change"]("Create", None, properties, {}, "", stack_id)
+        self.assertTrue(create["configuration"]["audioDataDeliveryEnabled"])
+        old_properties = {key: value for key, value in properties.items()
+                          if key != "LoggingConfigurationVersion"}
+        old_config = {"s3Config": {"bucketName": "source-logs", "keyPrefix": "demo/"},
+                      "textDataDeliveryEnabled": True, "imageDataDeliveryEnabled": True,
+                      "embeddingDataDeliveryEnabled": True, "videoDataDeliveryEnabled": True}
+        update = namespace["logging_change"]("Update", old_config, properties, old_properties,
+                                              create["physical_id"], stack_id)
+        self.assertEqual(update["action"], "put")
+        self.assertTrue(update["configuration"]["audioDataDeliveryEnabled"])
+        self.assertEqual(update["physical_id"], create["physical_id"])
+
     def test_replication_requires_destination_account_and_paired_kms_keys(self) -> None:
         """Incomplete destination and SSE-S3-to-KMS configurations fail before creation."""
         template = load_template("bedrock-logging")
@@ -201,6 +224,53 @@ class TemplateSafetyTests(unittest.TestCase):
         role = json.dumps(resources["ReplicationRole"])
         self.assertNotIn('"Fn::GetAtt": "LoggingBucket.Arn"', role)
         self.assertNotIn('"Ref": "LoggingBucket"', role)
+
+    def test_replication_toggle_keeps_the_role_owned_with_permissions_only_when_enabled(self) -> None:
+        """Disabling replication cannot orphan the retained role or leave it able to replicate."""
+        template = load_template("bedrock-logging")
+        defaults = {name: parameter_default(item)
+                    for name, item in template["Parameters"].items()}
+        role = template["Resources"]["ReplicationRole"]
+        policies = role["Properties"]["Policies"]["Fn::If"]
+        replication = template["Resources"]["LoggingBucket"]["Properties"][
+            "ReplicationConfiguration"]["Fn::If"]
+        cases = [(destination, source_key) for destination in ("", ARCHIVE)
+                 for source_key in ("", SOURCE_KEY)]
+        for destination, source_key in cases:
+            with self.subTest(destination=destination, source_key=source_key):
+                values = {**defaults, "ReplicationDestinationBucketArn": destination,
+                          "ReplicationDestinationAccountId": "222222222222" if destination else "",
+                          "LogKmsKeyArn": source_key,
+                          "ReplicationDestinationKmsKeyArn": TARGET_KEY
+                          if destination and source_key else ""}
+                self.assertFalse(rejected_parameters(template, values))
+                conditions = {name: rule_value(value, values)
+                              for name, value in template["Conditions"].items()}
+                self.assertTrue(conditions[role["Condition"]])
+                selected_policies = policies[1 if conditions[policies[0]] else 2]
+                selected_replication = replication[1 if conditions[replication[0]] else 2]
+                if not destination:
+                    self.assertEqual(selected_policies, {"Ref": "AWS::NoValue"})
+                    self.assertEqual(selected_replication, {"Ref": "AWS::NoValue"})
+                    continue
+                self.assertEqual(len(selected_policies), 1)
+                self.assertEqual(selected_replication["Role"],
+                                 {"Fn::GetAtt": "ReplicationRole.Arn"})
+                statements = selected_policies[0]["PolicyDocument"]["Statement"]
+                self.assertTrue(any(item.get("Action") == ["s3:ReplicateObject", "s3:ReplicateTags"]
+                                    for item in statements))
+        self.assertNotIn("ManagedPolicyArns", role["Properties"])
+        self.assertEqual(role["DeletionPolicy"], "Retain")
+        self.assertEqual(role["UpdateReplacePolicy"], "Retain")
+
+    def test_reused_bucket_does_not_create_an_idle_replication_role(self) -> None:
+        """Reusing customer logging does not introduce a role for an unmanaged bucket."""
+        template = load_template("bedrock-logging")
+        role = template["Resources"]["ReplicationRole"]
+        defaults = {name: parameter_default(item)
+                    for name, item in template["Parameters"].items()}
+        values = {**defaults, "ExistingLogBucket": "customer-logs", "LoggingMode": "Reuse"}
+        self.assertFalse(rule_value(template["Conditions"][role["Condition"]], values))
 
 
 if __name__ == "__main__":

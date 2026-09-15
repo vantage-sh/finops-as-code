@@ -4,6 +4,9 @@ from __future__ import annotations
 import copy
 import unittest
 
+from botocore.session import get_session
+from botocore.validate import validate_parameters
+
 from bedrock_demo.core.lifecycle import (
     logging_change,
     managed_logging_config,
@@ -14,8 +17,13 @@ from bedrock_demo.core.lifecycle import (
 
 
 STACK = "arn:aws:cloudformation:us-east-1:111111111111:stack/demo/unique-stack-id"
-PROPERTIES = {"BucketName": "source-logs", "KeyPrefix": "bedrock/", "LoggingMode": "Managed"}
+PROPERTIES = {"BucketName": "source-logs", "KeyPrefix": "bedrock/", "LoggingMode": "Managed",
+              "LoggingConfigurationVersion": "2"}
 CONFIG = managed_logging_config("source-logs", "bedrock/")
+PRE_AUDIO_PROPERTIES = {key: value for key, value in PROPERTIES.items()
+                        if key != "LoggingConfigurationVersion"}
+PRE_AUDIO_CONFIG = {key: value for key, value in CONFIG.items()
+                    if key != "audioDataDeliveryEnabled"}
 
 
 class LoggingLifecycleTests(unittest.TestCase):
@@ -26,6 +34,17 @@ class LoggingLifecycleTests(unittest.TestCase):
         result = logging_change("Create", None, PROPERTIES, {}, "", STACK)
         self.assertEqual(result["action"], "put")
         self.assertEqual(result["physical_id"], owned_resource_id(STACK))
+        self.assertTrue(result["configuration"]["audioDataDeliveryEnabled"])
+
+    def test_managed_config_enables_all_delivery_types_in_the_sdk_schema(self) -> None:
+        """Validate the complete fresh configuration against Bedrock's SDK model offline."""
+        wanted = {"s3Config": {"bucketName": "source-logs", "keyPrefix": "bedrock/"},
+                  "textDataDeliveryEnabled": True, "imageDataDeliveryEnabled": True,
+                  "embeddingDataDeliveryEnabled": True, "videoDataDeliveryEnabled": True,
+                  "audioDataDeliveryEnabled": True}
+        self.assertEqual(CONFIG, wanted)
+        shape = get_session().get_service_model("bedrock").shape_for("LoggingConfig")
+        validate_parameters(CONFIG, shape)
 
     def test_matching_existing_logging_is_not_owned_on_create(self) -> None:
         """Matching bucket names do not grant ownership of customer configuration."""
@@ -75,7 +94,7 @@ class LoggingLifecycleTests(unittest.TestCase):
         result = logging_change("Delete", CONFIG, props, {}, owned_resource_id(STACK), STACK)
         self.assertEqual(result["action"], "delete")
         for current in ({**CONFIG, "cloudWatchConfig": {"logGroupName": "new-owner"}},
-                        {**CONFIG, "audioDataDeliveryEnabled": True},
+                        {**CONFIG, "audioDataDeliveryEnabled": False},
                         {**CONFIG, "imageDataDeliveryEnabled": False}):
             with self.subTest(current=current):
                 change = logging_change("Delete", current, props, {},
@@ -119,6 +138,73 @@ class LoggingLifecycleTests(unittest.TestCase):
                                 STACK)
         self.assertEqual(result["action"], "put")
         self.assertEqual(result["configuration"]["s3Config"]["keyPrefix"], "new-prefix/")
+
+    def test_owned_pre_audio_configuration_upgrades_without_changing_ownership(self) -> None:
+        """Enable audio for an unchanged version-one configuration owned by this stack."""
+        for current in (PRE_AUDIO_CONFIG, {**PRE_AUDIO_CONFIG, "audioDataDeliveryEnabled": False}):
+            with self.subTest(current=current):
+                before = copy.deepcopy(current)
+                result = logging_change("Update", current, PROPERTIES, PRE_AUDIO_PROPERTIES,
+                                        owned_resource_id(STACK), STACK)
+                self.assertEqual(result["action"], "put")
+                self.assertEqual(result["configuration"], CONFIG)
+                self.assertEqual(result["physical_id"], owned_resource_id(STACK))
+                self.assertEqual(current, before)
+
+    def test_retried_audio_upgrade_acknowledges_the_completed_write(self) -> None:
+        """A lost upgrade response does not repeat the write or replace the physical ID."""
+        result = logging_change("Update", CONFIG, PROPERTIES, PRE_AUDIO_PROPERTIES,
+                                owned_resource_id(STACK), STACK)
+        self.assertEqual(result["action"], "noop")
+        self.assertEqual(result["physical_id"], owned_resource_id(STACK))
+
+    def test_unowned_pre_audio_configuration_is_not_upgraded(self) -> None:
+        """Legacy or foreign ownership markers cannot authorize enabling audio."""
+        for physical_id in ("", "legacy-stream", owned_resource_id("another-stack")):
+            with self.subTest(physical_id=physical_id), \
+                    self.assertRaisesRegex(ValueError, "will not overwrite"):
+                logging_change("Update", PRE_AUDIO_CONFIG, PROPERTIES, PRE_AUDIO_PROPERTIES,
+                               physical_id, STACK)
+
+    def test_version_two_disabled_audio_is_preserved_as_external_drift(self) -> None:
+        """Missing or disabled audio after version two cannot be overwritten or deleted."""
+        for current in (PRE_AUDIO_CONFIG, {**CONFIG, "audioDataDeliveryEnabled": False}):
+            with self.subTest(current=current):
+                with self.assertRaisesRegex(ValueError, "will not overwrite"):
+                    logging_change("Update", current, PROPERTIES, PROPERTIES,
+                                   owned_resource_id(STACK), STACK)
+                props = {**PROPERTIES, "RetainLoggingOnDelete": "false"}
+                result = logging_change("Delete", current, props, {}, owned_resource_id(STACK),
+                                        STACK)
+                self.assertEqual(result["action"], "noop")
+
+    def test_pre_audio_delete_accepts_only_its_unchanged_declared_schema(self) -> None:
+        """An explicit version-one cleanup handles omitted and default-false audio safely."""
+        props = {**PRE_AUDIO_PROPERTIES, "RetainLoggingOnDelete": "false"}
+        for current in (PRE_AUDIO_CONFIG, {**PRE_AUDIO_CONFIG, "audioDataDeliveryEnabled": False}):
+            with self.subTest(current=current):
+                result = logging_change("Delete", current, props, {}, owned_resource_id(STACK),
+                                        STACK)
+                self.assertEqual(result["action"], "delete")
+        changed = logging_change("Delete", CONFIG, props, {}, owned_resource_id(STACK), STACK)
+        self.assertEqual(changed["action"], "noop")
+
+    def test_audio_upgrade_does_not_overwrite_other_preexisting_changes(self) -> None:
+        """The schema upgrade still respects changes to older delivery flags and destinations."""
+        for current in ({**PRE_AUDIO_CONFIG, "textDataDeliveryEnabled": False},
+                        {**PRE_AUDIO_CONFIG, "cloudWatchConfig": {"logGroupName": "keep-me"}}):
+            with self.subTest(current=current), \
+                    self.assertRaisesRegex(ValueError, "will not overwrite"):
+                logging_change("Update", current, PROPERTIES, PRE_AUDIO_PROPERTIES,
+                               owned_resource_id(STACK), STACK)
+
+    def test_rollback_can_restore_the_previous_declared_schema(self) -> None:
+        """A rollback of our unchanged audio upgrade can restore the prior managed settings."""
+        result = logging_change("Update", CONFIG, PRE_AUDIO_PROPERTIES, PROPERTIES,
+                                owned_resource_id(STACK), STACK)
+        self.assertEqual(result["action"], "put")
+        self.assertEqual(result["configuration"], PRE_AUDIO_CONFIG)
+        self.assertEqual(result["physical_id"], owned_resource_id(STACK))
 
     def test_ambiguous_vantage_roles_require_selection(self) -> None:
         """Read access is never sprayed across stale integrations found by name."""

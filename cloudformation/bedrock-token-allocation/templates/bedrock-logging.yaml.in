@@ -189,7 +189,8 @@ Resources:
 
   ReplicationRole:
     Type: AWS::IAM::Role
-    Condition: Replicate
+    # Keep ownership when replication is disabled; a retained fixed name cannot be recreated.
+    Condition: CreateBucket
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
@@ -200,38 +201,40 @@ Resources:
           - Effect: Allow
             Principal: {Service: s3.amazonaws.com}
             Action: sts:AssumeRole
-      Policies:
-        - PolicyName: ReplicateBedrockInvocationLogs
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action: [s3:GetReplicationConfiguration, s3:ListBucket]
-                Resource: !Sub
-                  - "arn:${AWS::Partition}:s3:::${Bucket}"
-                  - Bucket: !If [NamedBucket, !Ref LogBucketName, !Sub "bedrock-mil-logs-${AWS::AccountId}-${AWS::Region}"]
-              - Effect: Allow
-                Action: [s3:GetObjectVersionForReplication, s3:GetObjectVersionAcl, s3:GetObjectVersionTagging]
-                Resource: !Sub
-                  - "arn:${AWS::Partition}:s3:::${Bucket}/${KeyPrefix}AWSLogs/${AWS::AccountId}/BedrockModelInvocationLogs/${AWS::Region}/*"
-                  - Bucket: !If [NamedBucket, !Ref LogBucketName, !Sub "bedrock-mil-logs-${AWS::AccountId}-${AWS::Region}"]
-              - Effect: Allow
-                Action: [s3:ReplicateObject, s3:ReplicateTags]
-                Resource: !Sub "${ReplicationDestinationBucketArn}/${KeyPrefix}AWSLogs/${AWS::AccountId}/BedrockModelInvocationLogs/${AWS::Region}/*"
-              - !If
-                - SourceKms
+      Policies: !If
+        - Replicate
+        - - PolicyName: ReplicateBedrockInvocationLogs
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
                 - Effect: Allow
-                  Action: kms:Decrypt
-                  Resource: !Ref LogKmsKeyArn
-                  Condition:
-                    StringEquals: {"kms:ViaService": !Sub "s3.${AWS::Region}.${AWS::URLSuffix}"}
-                - !Ref AWS::NoValue
-              - !If
-                - DestinationKms
+                  Action: [s3:GetReplicationConfiguration, s3:ListBucket]
+                  Resource: !Sub
+                    - "arn:${AWS::Partition}:s3:::${Bucket}"
+                    - Bucket: !If [NamedBucket, !Ref LogBucketName, !Sub "bedrock-mil-logs-${AWS::AccountId}-${AWS::Region}"]
                 - Effect: Allow
-                  Action: [kms:Encrypt, kms:GenerateDataKey]
-                  Resource: !Ref ReplicationDestinationKmsKeyArn
-                - !Ref AWS::NoValue
+                  Action: [s3:GetObjectVersionForReplication, s3:GetObjectVersionAcl, s3:GetObjectVersionTagging]
+                  Resource: !Sub
+                    - "arn:${AWS::Partition}:s3:::${Bucket}/${KeyPrefix}AWSLogs/${AWS::AccountId}/BedrockModelInvocationLogs/${AWS::Region}/*"
+                    - Bucket: !If [NamedBucket, !Ref LogBucketName, !Sub "bedrock-mil-logs-${AWS::AccountId}-${AWS::Region}"]
+                - Effect: Allow
+                  Action: [s3:ReplicateObject, s3:ReplicateTags]
+                  Resource: !Sub "${ReplicationDestinationBucketArn}/${KeyPrefix}AWSLogs/${AWS::AccountId}/BedrockModelInvocationLogs/${AWS::Region}/*"
+                - !If
+                  - SourceKms
+                  - Effect: Allow
+                    Action: kms:Decrypt
+                    Resource: !Ref LogKmsKeyArn
+                    Condition:
+                      StringEquals: {"kms:ViaService": !Sub "s3.${AWS::Region}.${AWS::URLSuffix}"}
+                  - !Ref AWS::NoValue
+                - !If
+                  - DestinationKms
+                  - Effect: Allow
+                    Action: [kms:Encrypt, kms:GenerateDataKey]
+                    Resource: !Ref ReplicationDestinationKmsKeyArn
+                  - !Ref AWS::NoValue
+        - !Ref AWS::NoValue
 
   ConfigFunctionRole:
     Type: AWS::IAM::Role
@@ -305,6 +308,7 @@ Resources:
       BucketName: !If [CreateBucket, !Ref LoggingBucket, !Ref ExistingLogBucket]
       KeyPrefix: !Ref KeyPrefix
       LoggingMode: !Ref LoggingMode
+      LoggingConfigurationVersion: "2"
       OwnsLogBucket: !If [CreateBucket, "true", "false"]
       RetainLoggingOnDelete: !Ref RetainLoggingOnDelete
       BucketPolicyDependency: !If [CreateBucket, !Ref LoggingBucketPolicy, !Ref AWS::NoValue]
