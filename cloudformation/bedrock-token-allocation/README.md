@@ -21,7 +21,7 @@ flowchart LR
     LB -.->|"S3 replication"| CB
 ```
 
-Follow the three numbered steps for a fresh account. Already logging Bedrock to S3? Jump to [reusing an existing bucket](#reuse-an-existing-log-bucket). [What has been proven](#what-has-been-proven-so-far) is honest about which parts have run for real.
+Follow the three numbered steps for a fresh account. Already logging Bedrock to S3? Jump to [reusing an existing bucket](#reuse-an-existing-log-bucket). See [validation](#maintain-and-validate-the-demo) for the acceptance checks.
 
 ## What one deployment creates
 
@@ -232,6 +232,8 @@ The region list comes from observed spend, so add regions you intend to use. Ser
 
 Replication copies eligible new objects with their keys and bytes unchanged. Objects that existed before the rule need [S3 Batch Replication](https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-batch-replication-batch.html), and copying them does not make Vantage reprocess anything.
 
+A managed stack keeps its replication role when replication is disabled, with no replication permissions, so re-enabling replication reuses the same role.
+
 Fresh buckets use SSE-S3. For KMS, both sides must agree: set `central.kms=true` and a `kms_key_arn` on every source in `rollout.json`, or with the raw templates set `EnableKmsEncryption` on the destination plus `LogKmsKeyArn` and `ReplicationDestinationKmsKeyArn` on each source. A KMS default on the destination alone does not convert SSE-S3 replicas. Your source key policies must allow Bedrock delivery, the replication role, and the Vantage role to use the key; an IAM grant does not override a key policy.
 
 `LogRetentionDays` and `RetentionDays` default to `0`, which means never expire. Versioning keeps older object versions too. Replication Time Control is not enabled.
@@ -250,11 +252,11 @@ Fresh buckets use SSE-S3. For KMS, both sides must agree: set `central.kms=true`
 
 ## Remove only what this deployment owns
 
-Deleting a stack keeps its bucket, its data, its delivery policy, and its replication role. Managed logging stays on by default. What a delete does remove is the stack's read grant for Vantage, so stop or replace that source in Vantage first.
+Deleting a stack keeps its bucket, its data, its delivery policy, and its replication role. Managed logging stays on by default. Deletion removes the stack's Lambda log groups and its read grant for Vantage, so stop or replace that source in Vantage first.
 
 1. Decide whether logging should continue. If it should stop, do that through whichever tool owns it. For logging this stack created and never changed, a reviewed update to `RetainLoggingOnDelete=false` lets the delete turn it off. Reused logging is never turned off by this stack.
 2. Disable the replication rule when you no longer want copies.
-3. Delete the stacks, then look at what was retained: buckets with their versions and delete markers, bucket policies, the named replication role, the KMS key, and the Lambda log groups. Keep the KMS key as long as encrypted logs exist.
+3. Delete the stacks, then look at what was retained: buckets with their versions and delete markers, bucket policies, the named replication role, and any archive KMS key. Keep KMS keys as long as encrypted logs exist.
 
 ## What Vantage needs from these logs
 
