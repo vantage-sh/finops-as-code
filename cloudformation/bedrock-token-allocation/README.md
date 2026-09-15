@@ -269,12 +269,6 @@ Everything above rests on a short contract with the public Vantage integration. 
 | Billing for the account in Vantage, through its own or its payer's integration | A prerequisite, not something the templates can create |
 | Connect and import as separate steps ([import history](https://docs.vantage.sh/llm_enrichment_import_history)) | The AWS report always leaves `vantage_verified: false`; save Vantage import and cost evidence separately |
 
-## What has been proven so far
-
-As of September 14, 2026, 107 automated checks pass. A one-account test proved native log delivery and cross-region replication with identical bytes and metadata. A separate Reuse test preserved existing logging, passed Vantage Check Permissions, and connected successfully.
-
-Full end-to-end cost attribution remains unverified. The new source awaits Vantage inventory; the Reuse source shows `Added`, awaiting billing import. Cross-account, organization, and KMS validation remain open. Only one test account was available for this run.
-
 ## Maintain and validate the demo
 
 | Location | Purpose |
