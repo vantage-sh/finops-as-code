@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "deployment_id": "bedrock-demo",
+  "central": {
+    "profile": "central-admin",
+    "account_id": "111111111111",
+    "region": "us-east-1",
+    "stack_name": "bedrock-demo-central",
+    "bucket_name": "replace-with-your-central-bedrock-bucket",
+    "kms": false,
+    "retention_days": 0
+  },
+  "sources": [
+    {
+      "profile": "source-admin",
+      "account_id": "222222222222",
+      "region": "us-west-2",
+      "stack_name": "bedrock-demo-source",
+      "bucket_name": "replace-with-your-source-bedrock-bucket",
+      "key_prefix": "",
+      "vantage_role": "REPLACE_WITH_EXISTING_VANTAGE_ROLE_NAME",
+      "logging_mode": "Managed",
+      "retention_days": 0
+    }
+  ]
+}

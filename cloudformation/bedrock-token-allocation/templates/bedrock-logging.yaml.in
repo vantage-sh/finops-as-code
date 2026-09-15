@@ -1,0 +1,375 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Enable or safely reuse local Bedrock invocation logging for native Vantage
+  enrichment, with optional replication to a customer-owned archive.
+  Native Vantage always reads this original bucket, not the replica.
+
+Parameters:
+  ExistingLogBucket:
+    Type: String
+    Default: ""
+    Description: Existing bucket to reuse without modifying logging or bucket configuration. Requires LoggingMode=Reuse.
+  LogBucketName:
+    Type: String
+    Default: ""
+    Description: Optional name for a new bucket; otherwise bedrock-mil-logs-<account>-<region>.
+  LoggingMode:
+    Type: String
+    Default: Managed
+    AllowedValues: [Managed, Reuse]
+    Description: Managed creates logging only when absent. Reuse preserves existing logging including CloudWatch and modality settings.
+  KeyPrefix:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^[^/].*/$"
+    Description: Existing or new Bedrock prefix, empty or ending in a slash.
+  VantageCrossAccountRole:
+    Type: String
+    Default: ""
+    Description: Active source-account Vantage role name. Empty discovers exactly one matching role; ambiguous matches fail.
+  ReplicationDestinationBucketArn:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^arn:[a-z-]+:s3:::[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$"
+    Description: Optional central customer bucket ARN. Existing buckets require an additive replication change in their owning IaC instead.
+  ReplicationDestinationAccountId:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^[0-9]{12}$"
+    Description: Account owning the optional central bucket.
+  ReplicationDestinationKmsKeyArn:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^arn:[a-z-]+:kms:[a-z0-9-]+:[0-9]{12}:key/.+$"
+    Description: Central stack KMS output. Required for a KMS-encrypted source; key must allow the source replication role.
+  LogKmsKeyArn:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^arn:[a-z-]+:kms:[a-z0-9-]+:[0-9]{12}:key/.+$"
+    Description: Optional customer-managed source key ARN. Its owner must grant Bedrock GenerateDataKey and this account's reader/replication roles access.
+  ReplicationRoleNamePrefix:
+    Type: String
+    Default: bedrock-mil-replication
+    AllowedPattern: "^[a-zA-Z0-9+=,.@_-]{1,40}$"
+    Description: Must match the central stack; the source role name appends this region.
+  RetainLoggingOnDelete:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Keep logging on removal. False removes only a configuration created by this stack that has not changed; reused logging is always retained.
+  LogRetentionDays:
+    Type: Number
+    Default: 0
+    MinValue: 0
+    MaxValue: 3650
+    Description: New bucket current and noncurrent version retention. Zero leaves expiration disabled; choose a window covering billing replay.
+  EnableReplicationMetrics:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Enable paid CloudWatch replication metrics without Replication Time Control.
+
+Rules:
+  ExplicitExistingBucketMode:
+    Assertions:
+      - Assert: !Or
+          - !And [!Equals [!Ref ExistingLogBucket, ""], !Equals [!Ref LoggingMode, Managed]]
+          - !And [!Not [!Equals [!Ref ExistingLogBucket, ""]], !Equals [!Ref LoggingMode, Reuse]]
+        AssertDescription: Use Managed for a fresh bucket or ExistingLogBucket with LoggingMode=Reuse.
+  ExistingBucketsStayCustomerOwned:
+    Assertions:
+      - Assert: !Or [!Equals [!Ref ExistingLogBucket, ""], !And [!Equals [!Ref ReplicationDestinationBucketArn, ""], !Equals [!Ref LogBucketName, ""]]]
+        AssertDescription: Reused buckets cannot receive replication configuration here. Add replication in their owning IaC and leave LogBucketName empty.
+  ReplicationDestinationComplete:
+    Assertions:
+      - Assert: !Or [!Equals [!Ref ReplicationDestinationBucketArn, ""], !Not [!Equals [!Ref ReplicationDestinationAccountId, ""]]]
+        AssertDescription: ReplicationDestinationAccountId is required with a replication bucket.
+      - Assert: !Or [!Equals [!Ref ReplicationDestinationKmsKeyArn, ""], !Not [!Equals [!Ref ReplicationDestinationBucketArn, ""]]]
+        AssertDescription: A destination KMS key requires a replication bucket.
+      - Assert: !Or [!Equals [!Ref ReplicationDestinationBucketArn, ""], !Equals [!Ref LogKmsKeyArn, ""], !Not [!Equals [!Ref ReplicationDestinationKmsKeyArn, ""]]]
+        AssertDescription: Replicating a KMS-encrypted source requires an explicit destination customer-managed KMS key.
+      - Assert: !Or [!Equals [!Ref ReplicationDestinationKmsKeyArn, ""], !Not [!Equals [!Ref LogKmsKeyArn, ""]]]
+        AssertDescription: KMS replicas require KMS-encrypted source objects. Set LogKmsKeyArn; a destination KMS default alone does not convert SSE-S3 replicas.
+
+Conditions:
+  CreateBucket: !Equals [!Ref ExistingLogBucket, ""]
+  NamedBucket: !Not [!Equals [!Ref LogBucketName, ""]]
+  DiscoverRole: !Equals [!Ref VantageCrossAccountRole, ""]
+  Replicate: !Not [!Equals [!Ref ReplicationDestinationBucketArn, ""]]
+  SourceKms: !Not [!Equals [!Ref LogKmsKeyArn, ""]]
+  DestinationKms: !Not [!Equals [!Ref ReplicationDestinationKmsKeyArn, ""]]
+  ExpireLogs: !Not [!Equals [!Ref LogRetentionDays, 0]]
+  ReplicationMetrics: !Equals [!Ref EnableReplicationMetrics, "true"]
+
+Resources:
+  LoggingBucket:
+    Type: AWS::S3::Bucket
+    Condition: CreateBucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !If [NamedBucket, !Ref LogBucketName, !Sub "bedrock-mil-logs-${AWS::AccountId}-${AWS::Region}"]
+      VersioningConfiguration:
+        Status: Enabled
+      OwnershipControls:
+        Rules: [{ObjectOwnership: BucketOwnerEnforced}]
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: !If
+              - SourceKms
+              - {SSEAlgorithm: "aws:kms", KMSMasterKeyID: !Ref LogKmsKeyArn}
+              - {SSEAlgorithm: AES256}
+      LifecycleConfiguration: !If
+        - ExpireLogs
+        - Rules:
+            - Id: BedrockLogRetention
+              Status: Enabled
+              ExpirationInDays: !Ref LogRetentionDays
+              NoncurrentVersionExpiration: {NoncurrentDays: !Ref LogRetentionDays}
+              AbortIncompleteMultipartUpload: {DaysAfterInitiation: 7}
+        - !Ref AWS::NoValue
+      ReplicationConfiguration: !If
+        - Replicate
+        - Role: !GetAtt ReplicationRole.Arn
+          Rules:
+            - Id: BedrockInvocationArchive
+              Priority: 1
+              Status: Enabled
+              DeleteMarkerReplication: {Status: Disabled}
+              Filter:
+                Prefix: !Sub "${KeyPrefix}AWSLogs/${AWS::AccountId}/BedrockModelInvocationLogs/${AWS::Region}/"
+              SourceSelectionCriteria: !If
+                - SourceKms
+                - SseKmsEncryptedObjects: {Status: Enabled}
+                - !Ref AWS::NoValue
+              Destination:
+                Bucket: !Ref ReplicationDestinationBucketArn
+                Account: !Ref ReplicationDestinationAccountId
+                StorageClass: STANDARD
+                EncryptionConfiguration: !If
+                  - DestinationKms
+                  - ReplicaKmsKeyID: !Ref ReplicationDestinationKmsKeyArn
+                  - !Ref AWS::NoValue
+                Metrics: !If
+                  - ReplicationMetrics
+                  - {Status: Enabled}
+                  - !Ref AWS::NoValue
+        - !Ref AWS::NoValue
+
+  LoggingBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Condition: CreateBucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Bucket: !Ref LoggingBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: RequireTLS
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource: [!GetAtt LoggingBucket.Arn, !Sub "${LoggingBucket.Arn}/*"]
+            Condition:
+              Bool: {"aws:SecureTransport": "false"}
+          - Sid: AllowBedrockLogDelivery
+            Effect: Allow
+            Principal: {Service: bedrock.amazonaws.com}
+            Action: s3:PutObject
+            Resource: !Sub "${LoggingBucket.Arn}/${KeyPrefix}AWSLogs/${AWS::AccountId}/BedrockModelInvocationLogs/*"
+            Condition:
+              StringEquals: {"aws:SourceAccount": !Ref AWS::AccountId}
+              ArnLike: {"aws:SourceArn": !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:*"}
+
+  ReplicationRole:
+    Type: AWS::IAM::Role
+    # Keep ownership when replication is disabled; a retained fixed name cannot be recreated.
+    Condition: CreateBucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      RoleName: !Sub "${ReplicationRoleNamePrefix}-${AWS::Region}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: {Service: s3.amazonaws.com}
+            Action: sts:AssumeRole
+      Policies: !If
+        - Replicate
+        - - PolicyName: ReplicateBedrockInvocationLogs
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: Allow
+                  Action: [s3:GetReplicationConfiguration, s3:ListBucket]
+                  Resource: !Sub
+                    - "arn:${AWS::Partition}:s3:::${Bucket}"
+                    - Bucket: !If [NamedBucket, !Ref LogBucketName, !Sub "bedrock-mil-logs-${AWS::AccountId}-${AWS::Region}"]
+                - Effect: Allow
+                  Action: [s3:GetObjectVersionForReplication, s3:GetObjectVersionAcl, s3:GetObjectVersionTagging]
+                  Resource: !Sub
+                    - "arn:${AWS::Partition}:s3:::${Bucket}/${KeyPrefix}AWSLogs/${AWS::AccountId}/BedrockModelInvocationLogs/${AWS::Region}/*"
+                    - Bucket: !If [NamedBucket, !Ref LogBucketName, !Sub "bedrock-mil-logs-${AWS::AccountId}-${AWS::Region}"]
+                - Effect: Allow
+                  Action: [s3:ReplicateObject, s3:ReplicateTags]
+                  Resource: !Sub "${ReplicationDestinationBucketArn}/${KeyPrefix}AWSLogs/${AWS::AccountId}/BedrockModelInvocationLogs/${AWS::Region}/*"
+                - !If
+                  - SourceKms
+                  - Effect: Allow
+                    Action: kms:Decrypt
+                    Resource: !Ref LogKmsKeyArn
+                    Condition:
+                      StringEquals: {"kms:ViaService": !Sub "s3.${AWS::Region}.${AWS::URLSuffix}"}
+                  - !Ref AWS::NoValue
+                - !If
+                  - DestinationKms
+                  - Effect: Allow
+                    Action: [kms:Encrypt, kms:GenerateDataKey]
+                    Resource: !Ref ReplicationDestinationKmsKeyArn
+                  - !Ref AWS::NoValue
+        - !Ref AWS::NoValue
+
+  ConfigFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement: [{Effect: Allow, Principal: {Service: lambda.amazonaws.com}, Action: sts:AssumeRole}]
+      Policies:
+        - PolicyName: BedrockLoggingConfig
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [bedrock:GetModelInvocationLoggingConfiguration, bedrock:PutModelInvocationLoggingConfiguration, bedrock:DeleteModelInvocationLoggingConfiguration]
+                Resource: "*"
+              - Effect: Allow
+                Action: iam:ListRoles
+                Resource: "*"
+              - Effect: Allow
+                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:*"
+
+  EnableLoggingFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Runtime: python3.13
+      Timeout: 120
+      Role: !GetAtt ConfigFunctionRole.Arn
+      Code:
+        ZipFile: |
+          @@LOGGING_CONFIGURATION@@
+
+  RoleLookupFunction:
+    Type: AWS::Lambda::Function
+    Condition: DiscoverRole
+    Properties:
+      Handler: index.handler
+      Runtime: python3.13
+      Timeout: 120
+      Role: !GetAtt ConfigFunctionRole.Arn
+      Code:
+        ZipFile: |
+          @@VANTAGE_ROLE_LOOKUP@@
+
+  LoggingFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${EnableLoggingFunction}"
+      RetentionInDays: 14
+
+  RoleLookupLogGroup:
+    Type: AWS::Logs::LogGroup
+    Condition: DiscoverRole
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${RoleLookupFunction}"
+      RetentionInDays: 14
+
+  VantageRoleLookup:
+    Type: Custom::VantageRoleLookup
+    Condition: DiscoverRole
+    DependsOn: RoleLookupLogGroup
+    Properties:
+      ServiceToken: !GetAtt RoleLookupFunction.Arn
+
+  LoggingConfiguration:
+    Type: Custom::BedrockLoggingConfiguration
+    DependsOn: [VantageManagedReadPolicy, LoggingFunctionLogGroup]
+    Properties:
+      ServiceToken: !GetAtt EnableLoggingFunction.Arn
+      BucketName: !If [CreateBucket, !Ref LoggingBucket, !Ref ExistingLogBucket]
+      KeyPrefix: !Ref KeyPrefix
+      LoggingMode: !Ref LoggingMode
+      LoggingConfigurationVersion: "2"
+      OwnsLogBucket: !If [CreateBucket, "true", "false"]
+      RetainLoggingOnDelete: !Ref RetainLoggingOnDelete
+      BucketPolicyDependency: !If [CreateBucket, !Ref LoggingBucketPolicy, !Ref AWS::NoValue]
+
+  VantageManagedReadPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Read original Bedrock invocation logs for native Vantage enrichment.
+      Roles: !Split [",", !If [DiscoverRole, !GetAtt VantageRoleLookup.RoleNames, !Ref VantageCrossAccountRole]]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: [s3:GetObject, s3:GetObjectAcl]
+            Resource: !Sub
+              - "arn:${AWS::Partition}:s3:::${Bucket}/${KeyPrefix}AWSLogs/${AWS::AccountId}/BedrockModelInvocationLogs/*"
+              - Bucket: !If [CreateBucket, !Ref LoggingBucket, !Ref ExistingLogBucket]
+          - Effect: Allow
+            Action: s3:GetBucketLocation
+            Resource: !Sub
+              - "arn:${AWS::Partition}:s3:::${Bucket}"
+              - Bucket: !If [CreateBucket, !Ref LoggingBucket, !Ref ExistingLogBucket]
+          - Effect: Allow
+            Action: s3:ListBucket
+            Resource: !Sub
+              - "arn:${AWS::Partition}:s3:::${Bucket}"
+              - Bucket: !If [CreateBucket, !Ref LoggingBucket, !Ref ExistingLogBucket]
+            Condition:
+              StringLike: {"s3:prefix": !Sub "${KeyPrefix}AWSLogs/${AWS::AccountId}/BedrockModelInvocationLogs/*"}
+          - Effect: Allow
+            Action: bedrock:GetModelInvocationLoggingConfiguration
+            Resource: "*"
+          - !If
+            - SourceKms
+            - Effect: Allow
+              Action: kms:Decrypt
+              Resource: !Ref LogKmsKeyArn
+              Condition:
+                StringEquals: {"kms:ViaService": !Sub "s3.${AWS::Region}.${AWS::URLSuffix}"}
+            - !Ref AWS::NoValue
+
+Outputs:
+  LogBucket:
+    Value: !If [CreateBucket, !Ref LoggingBucket, !Ref ExistingLogBucket]
+  LogBucketArn:
+    Value: !Sub
+      - "arn:${AWS::Partition}:s3:::${Bucket}"
+      - Bucket: !If [CreateBucket, !Ref LoggingBucket, !Ref ExistingLogBucket]
+  LogRegion:
+    Value: !Ref AWS::Region
+  VantageConnectPrefix:
+    Description: Connect this ORIGINAL source bucket and region in native Vantage; never connect the central copy.
+    Value: !Sub "${KeyPrefix}AWSLogs/${AWS::AccountId}/BedrockModelInvocationLogs/${AWS::Region}/"
+  VantageRolesGranted:
+    Value: !If [DiscoverRole, !GetAtt VantageRoleLookup.RoleNames, !Ref VantageCrossAccountRole]
+  VantageReadPolicyArn:
+    Description: Customer managed read policy attached to the Vantage role for this source bucket.
+    Value: !Ref VantageManagedReadPolicy
+  ReplicationRoleArn:
+    Value: !If [Replicate, !GetAtt ReplicationRole.Arn, ""]
+  ReplicationDestinationBucketArn:
+    Value: !Ref ReplicationDestinationBucketArn
+  LoggingMode:
+    Value: !Ref LoggingMode

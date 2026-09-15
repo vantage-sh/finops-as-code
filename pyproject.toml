@@ -9,10 +9,12 @@ requires-python = ">=3.11"
 # demo wants; this file exists so the whole repo runs from a single sync.
 dependencies = [
     # cloudformation/bedrock-token-allocation, python/aws-account-based-virtual-tag,
-    # python/llm-telemetry-cold-start. botocore is listed because preflight.py and
-    # verify.py import it directly, not just through boto3.
+    # python/llm-telemetry-cold-start. botocore is listed because the Bedrock demo's
+    # bedrock_demo package imports it directly, not just through boto3.
     "boto3",
     "botocore",
+    # cloudformation/bedrock-token-allocation tests parse the rendered templates.
+    "pyyaml",
     # python/llm-telemetry-cold-start
     "anthropic",
     "openai",

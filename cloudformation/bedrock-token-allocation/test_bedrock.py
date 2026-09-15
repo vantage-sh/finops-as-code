@@ -1,21 +1,14 @@
-"""Tests for the pure core AND the template's embedded Lambdas: python3 test_bedrock.py.
+"""Stdlib tests for native log contracts and explicit deployment plans: python3 test_bedrock.py.
 
-Stdlib only. Both Lambda blocks are extracted straight out of
-bedrock-logging.yaml and exec'd, so the code that runs in CloudFormation is
-the code under test; there is no copy to drift. Path and record assertions
-mirror the prefix Vantage's reader constructs and the fields it filters
-and dedupes on.
+Lambda lifecycle and generated-template tests live under tests/. These checks
+exercise the public demo helpers; they do not run Vantage Core or prove ingestion.
 """
 from __future__ import annotations
 
 import gzip
-import itertools
 import json
 import re
-import sys
-import types
 from datetime import date
-from pathlib import Path
 
 from bedrock import (
     bedrock_service_names,
@@ -38,9 +31,6 @@ from bedrock import (
     targeted_instance_commands,
     vantage_connect_values,
 )
-
-TEMPLATE = Path(__file__).parent / "bedrock-logging.yaml"
-ZIPFILE_LIMIT = 4096  # AWS::Lambda::Function inline Code.ZipFile hard cap
 
 MIL_RECORD = {
     "schemaType": "ModelInvocationLog",
@@ -76,102 +66,6 @@ CE_RESULTS = [
          "Metrics": {"UnblendedCost": {"Amount": "5.00", "Unit": "USD"}}},
     ]},
 ]
-
-
-def block_at(lines: list[str], start: int) -> str:
-    """Return one indented YAML literal block, dedented, starting at line index start."""
-    body = itertools.takewhile(
-        lambda line: not line.strip() or line.startswith(" " * 10), lines[start:])
-    return "".join(line[10:] if line.startswith(" " * 10) else line for line in body)
-
-
-def zipfile_blocks() -> list[str]:
-    """Return every inline Lambda source block in the template, in file order."""
-    lines = TEMPLATE.read_text().splitlines(keepends=True)
-    starts = [i + 1 for i, line in enumerate(lines) if line.strip() == "ZipFile: |"]
-    return [block_at(lines, start) for start in starts]
-
-
-def exec_block(marker: str) -> dict:
-    """Return the exec'd namespace of the Lambda block containing marker, stubbing boto3."""
-    if "boto3" not in sys.modules:
-        try:
-            import boto3  # noqa: F401
-        except ImportError:
-            sys.modules["boto3"] = types.ModuleType("boto3")
-    block = next(b for b in zipfile_blocks() if marker in b)
-    namespace: dict = {}
-    exec(block, namespace)
-    return namespace
-
-
-ENABLE = exec_block("def decide")
-LOOKUP = exec_block("def vantage_role_names")
-
-
-def test_both_lambdas_fit_the_inline_limit() -> None:
-    """Each extracted ZipFile block stays under CloudFormation's 4096-char cap."""
-    blocks = zipfile_blocks()
-    assert len(blocks) == 2, "expected exactly two inline Lambdas"
-    oversized = [len(block) for block in blocks if len(block) > ZIPFILE_LIMIT]
-    assert not oversized, f"ZipFile block(s) at {oversized} chars will not deploy"
-
-
-def test_lambda_desired_config_is_s3_only() -> None:
-    """We never ask for CloudWatch delivery; all four modalities land in S3."""
-    config = ENABLE["desired_config"]("my-bucket", "")
-    assert config["s3Config"] == {"bucketName": "my-bucket"}
-    assert "cloudWatchConfig" not in config
-    enabled = [key for key, value in config.items() if value is True]
-    assert sorted(enabled) == ["embeddingDataDeliveryEnabled", "imageDataDeliveryEnabled",
-                               "textDataDeliveryEnabled", "videoDataDeliveryEnabled"]
-    with_prefix = ENABLE["desired_config"]("my-bucket", "logs/")
-    assert with_prefix["s3Config"] == {"bucketName": "my-bucket", "keyPrefix": "logs/"}
-
-
-def test_lambda_decide_never_clobbers() -> None:
-    """decide() puts on empty, noops on ours, and conflicts on anything else."""
-    decide = ENABLE["decide"]
-    ours = ENABLE["desired_config"]("my-bucket", "")
-    assert decide(None, "my-bucket", "") == "put"
-    assert decide({}, "my-bucket", "") == "put"
-    assert decide(ours, "my-bucket", "") == "noop"
-    stale_flags = dict(ours, imageDataDeliveryEnabled=False)
-    assert decide(stale_flags, "my-bucket", "") == "put"
-    other_bucket = {"s3Config": {"bucketName": "someone-elses"}}
-    assert decide(other_bucket, "my-bucket", "") == "conflict"
-    with_cloudwatch = dict(ours, cloudWatchConfig={"logGroupName": "/aws/bedrock"})
-    assert decide(with_cloudwatch, "my-bucket", "") == "conflict"
-
-
-def test_lambda_decide_repoints_its_own_previous_config() -> None:
-    """A stack update to a new bucket recognizes the old config as its own and re-puts."""
-    decide = ENABLE["decide"]
-    previous = ENABLE["desired_config"]("old-bucket", "")
-    assert decide(previous, "new-bucket", "", old=("old-bucket", "")) == "put"
-    assert decide(previous, "new-bucket", "") == "conflict"
-    someone_elses = {"s3Config": {"bucketName": "third-bucket"}}
-    assert decide(someone_elses, "new-bucket", "", old=("old-bucket", "")) == "conflict"
-
-
-def test_lambda_delete_guard_only_removes_our_config() -> None:
-    """matches_ours() is the delete guard: only our exact S3-only config matches."""
-    matches = ENABLE["matches_ours"]
-    ours = ENABLE["desired_config"]("my-bucket", "")
-    assert matches(ours, "my-bucket", "") is True
-    assert matches(None, "my-bucket", "") is False
-    assert matches({"s3Config": {"bucketName": "someone-elses"}}, "my-bucket", "") is False
-    assert matches(dict(ours, cloudWatchConfig={"logGroupName": "x"}), "my-bucket", "") is False
-
-
-def test_lambda_finds_only_vantage_roles() -> None:
-    """Role discovery matches the ConnectToVantage naming and nothing else."""
-    names = ["ConnectToVantage12345-1690000000-CrossAccountRole-AB12CD",
-             "ConnectToVantage2-1784650971-CrossAccountRole-QmNjpzXG8k8A",
-             "ConnectToVantageStack",  # no CrossAccountRole segment
-             "MyAppRole", "cdk-hnb659fds-deploy-role"]
-    assert LOOKUP["vantage_role_names"](names) == names[:2]
-    assert LOOKUP["vantage_role_names"](["MyAppRole"]) == []
 
 
 def test_log_prefix_matches_the_vantage_reader() -> None:
@@ -221,21 +115,48 @@ def test_management_account_note_only_when_targeted() -> None:
     assert management_account_note(plan, None) == ""
 
 
-def test_deployment_blocks_pick_the_right_story() -> None:
-    """Blocks cover no-org, no-spend, and the targeted case, and warn about serialization."""
+def test_fixed_deployment_blocks_do_not_enroll_future_accounts() -> None:
+    """Fixed targeting covers only observed account-region pairs and disables auto-enrollment."""
     plan = rollout_plan(spend_by_account_region(CE_RESULTS), {})
-    no_org = deployment_blocks(plan, None, "AccessDenied", "s", "t.yaml")
-    assert len(no_org) == 1 and "AccessDenied" in no_org[0]["title"]
-    assert "create-stack " in no_org[0]["body"]
+    blocks = deployment_blocks(plan, "r-abc1", "", "s", "t.yaml")
+    assert len(blocks) == 2
+    assert "--permission-model SERVICE_MANAGED" in blocks[0]["body"]
+    assert "Enabled=false,RetainStacksOnAccountRemoval=true" in blocks[0]["body"]
+    assert "Accounts=111111111111" in blocks[1]["body"]
+    assert "Accounts=222222222222" in blocks[1]["body"]
+    assert "serialized" in blocks[1]["body"]
 
-    targeted = deployment_blocks(plan, "r-abc1", "", "s", "t.yaml")
-    assert [block["title"].split(".")[0] for block in targeted[:2]] == ["1", "2"]
-    assert "SERVICE_MANAGED" in targeted[0]["body"]
-    assert "serialized" in targeted[1]["body"]
-    assert "every account in the organization" in targeted[2]["title"]
 
-    empty = deployment_blocks(rollout_plan([], {}), "r-abc1", "", "s", "t.yaml")
-    assert len(empty) == 2 and "us-east-1" in empty[1]["body"]
+def test_ou_deployment_explicitly_enrolls_future_accounts() -> None:
+    """An explicit OU mode covers the selected OU with future-account auto-deployment."""
+    plan = rollout_plan(spend_by_account_region(CE_RESULTS), {})
+    blocks = deployment_blocks(plan, "ou-abcd-example", "", "s", "t.yaml", mode="ou")
+    assert len(blocks) == 2
+    assert "Enabled=true,RetainStacksOnAccountRemoval=true" in blocks[0]["body"]
+    assert "OrganizationalUnitIds=ou-abcd-example" in blocks[1]["body"]
+    assert "Accounts=" not in blocks[1]["body"]
+    assert "--regions eu-west-1 us-east-1 us-west-2" in blocks[1]["body"]
+
+
+def test_empty_spend_does_not_expand_fixed_rollout_to_the_organization() -> None:
+    """Empty fixed-target discovery stops instead of inventing organization-wide coverage."""
+    blocks = deployment_blocks(rollout_plan([], {}), "r-abc1", "", "s", "t.yaml")
+    assert blocks == [{
+        "title": "No fixed-account targets found",
+        "body": "Provide explicit accounts with deploy.py or select --mode ou --ou-id. "
+                "No organization-wide deployment is inferred from empty spend.",
+    }]
+
+
+def test_missing_organization_access_returns_a_local_stack_fallback() -> None:
+    """Failure to read Organizations never becomes a successful org deployment plan."""
+    plan = rollout_plan(spend_by_account_region(CE_RESULTS), {})
+    blocks = deployment_blocks(plan, None, "AccessDenied", "s", "t.yaml")
+    assert len(blocks) == 1
+    assert "AccessDenied" in blocks[0]["title"]
+    assert "create-stack " in blocks[0]["body"]
+    assert "CAPABILITY_NAMED_IAM" in blocks[0]["body"]
+    assert "create-stack-instances" not in blocks[0]["body"]
 
 
 def test_vantage_connect_values_round_trip() -> None:
@@ -249,8 +170,8 @@ def test_vantage_connect_values_round_trip() -> None:
     }
 
 
-def test_record_problems_mirror_the_reader_rules() -> None:
-    """A real record passes; the fields Vantage filters or dedupes on are enforced."""
+def test_record_problems_require_the_demo_native_fixture_fields() -> None:
+    """A native AWS fixture passes the demo readiness checks; incomplete samples fail."""
     assert record_problems(MIL_RECORD) == []
     wrong_schema = dict(MIL_RECORD, schemaType="ModelInvocationEvent")
     assert any("filtered out" in problem for problem in record_problems(wrong_schema))
@@ -274,6 +195,23 @@ def test_records_from_gz_reads_both_shapes() -> None:
     assert len(records_from_gz(gzip.compress(f"{line}\n{line}\n".encode()))) == 2
     pretty = json.dumps(MIL_RECORD, indent=2)
     assert records_from_gz(gzip.compress(pretty.encode())) == [MIL_RECORD]
+
+
+def test_current_core_native_wire_contract_preserves_origin_and_customer_tags() -> None:
+    """The fixture stays native Bedrock JSON and points Vantage at the original calling region."""
+    record = dict(MIL_RECORD, modelId="us.amazon.nova-micro-v1:0", inferenceRegion="us-west-2")
+    decoded = records_from_gz(gzip.compress(json.dumps(record).encode()))[0]
+    assert decoded["accountId"] == "123456789012"
+    assert decoded["region"] == "us-east-1"
+    assert decoded["inferenceRegion"] == "us-west-2"
+    assert decoded["requestMetadata"] == {"team": "growth", "environment": "prod"}
+    assert "resource_account_id" not in decoded
+    assert "tags" not in decoded
+    assert vantage_connect_values("original-bucket", decoded["accountId"], decoded["region"]) == {
+        "bucket": "original-bucket",
+        "prefix": "AWSLogs/123456789012/BedrockModelInvocationLogs/us-east-1/",
+        "region": "us-east-1",
+    }
 
 
 def test_resolved_region_follows_cli_precedence() -> None:
@@ -326,7 +264,9 @@ def test_plan_lines_render_the_spend_table() -> None:
 def test_stackset_commands_carry_the_org_mechanics() -> None:
     """Service-managed permissions, auto-deploy, soft failure mode, and targeting are present."""
     create = stackset_create_command("bedrock-token-allocation", "bedrock-logging.yaml")
-    assert "SERVICE_MANAGED" in create and "Enabled=true" in create
+    assert "--permission-model SERVICE_MANAGED" in create
+    assert "Enabled=false,RetainStacksOnAccountRemoval=true" in create
+    assert "CAPABILITY_NAMED_IAM" in create
     org_wide = stackset_instances_command("s", "r-abc1", ["us-east-1", "eu-west-1"])
     assert "OrganizationalUnitIds=r-abc1" in org_wide and "Accounts=" not in org_wide
     assert "ConcurrencyMode=SOFT_FAILURE_TOLERANCE" in org_wide
