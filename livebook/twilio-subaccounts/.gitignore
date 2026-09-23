@@ -1,0 +1,9 @@
+/_build/
+/deps/
+/doc/
+/cover/
+/op.env
+/.env
+/erl_crash.dump
+/*.beam
+!/lib/

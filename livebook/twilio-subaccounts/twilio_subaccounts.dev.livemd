@@ -1,0 +1,54 @@
+# Connect Twilio subaccounts to Vantage
+
+```elixir
+Mix.install(
+  [{:twilio_onboarding, path: __DIR__}],
+  lockfile: Path.join(__DIR__, "mix.lock")
+)
+```
+
+## Credentials stay in the local runtime
+
+This development notebook loads the library beside this file. The customer release will load a pinned Vantage-owned package automatically in Livebook Desktop, with no repository clone or separate Elixir installation. That package has not been published yet.
+
+Add your credentials as **session secrets**. This works directly in Livebook Desktop and does not require 1Password or a terminal.
+
+1. Open **Secrets** using the lock icon in the left sidebar and click **New secret**.
+2. Enter one of the names below and its value. Enter the name **without `LB_`**; Livebook displays that prefix separately.
+3. Select **only this session**, then click **Add**. Repeat for all three names. Newly added session secrets are available immediately. If you use an existing workspace secret, enable its switch to grant this notebook access.
+
+Do not put credential values in a code cell. The README contains an optional 1Password CLI example and local setup instructions. See [Livebook's secret management overview](https://livebook.dev/blog/hubs-and-secret-management-launch-week-1-day-3/).
+
+| Session secret       | Where to find it                                                                                                                                                                                                                                  |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TWILIO_ACCOUNT_SID` | The parent Account SID in [Twilio Account Info](https://console.twilio.com/).                                                                                                                                                                     |
+| `TWILIO_AUTH_TOKEN`  | The parent's US1 Auth Token. [Find the token](https://help.twilio.com/articles/223136027-Auth-Tokens-and-how-to-change-them) and [check regional credentials](https://www.twilio.com/docs/global-infrastructure/manage-regional-api-credentials). |
+| `VANTAGE_API_TOKEN`  | A token with Read and Write scopes and integration-management permission. [Vantage authentication](https://docs.vantage.sh/api/authentication/) and [integration roles](https://docs.vantage.sh/connecting_twilio/).                              |
+
+The parent Auth Token goes only to Twilio. Each newly created child's key goes to Vantage. Standard keys have broad permissions within the child account; they are **not read-only**. See [Twilio key permissions](https://www.twilio.com/docs/iam/api-keys/key-resource-v1) and [Vantage's permission requirements](https://docs.vantage.sh/connecting_twilio/).
+
+Evaluate the `TwilioOnboarding.Notebook.start()` cell below to show the interface, then click **Validate credentials**. Opening the interface performs no API calls. Validation reads the inventories. Confirm any existing connection that needs identification before selecting children. Creating keys and integrations requires reviewing a selection and pressing **Connect**.
+
+## Review coverage before connecting
+
+This workflow connects existing active subaccounts. It does not create Twilio accounts or connect the parent. A parent integration includes subaccount usage, so connecting both overlaps costs. Child connections exclude usage incurred directly on the parent. [Twilio usage coverage](https://www.twilio.com/docs/usage/api/usage-record) · [Vantage Twilio coverage](https://docs.vantage.sh/connecting_twilio/)
+
+If an existing Vantage connection needs identification, open its exact settings link from the notebook. Copy **Account Details → Account SID** into the matching row and explicitly confirm it. The notebook reads the exact account from Twilio and verifies its actual owner. Only new child connections must belong to the validated parent. Names and description markers are only hints.
+
+Unknown or inaccessible accounts remain blockers. A verified parent connection blocks overlapping child costs; verified existing children are skipped and keep their current workspace access. Identity confirmation does not change the integration or create a key.
+
+Manual confirmations are session-only and must be repeated after **Validate credentials** or **Refresh accounts**. For connections created successfully by this notebook, local recovery records can restore the exact integration-token and Account SID mapping.
+
+Use one operator and avoid creating integrations elsewhere during the run. The notebook refreshes the inventory before creating each connection, but it cannot prevent another client from creating a duplicate between the check and the write. Full protection against that race requires duplicate enforcement in the Vantage API.
+
+```elixir
+TwilioOnboarding.Notebook.start()
+```
+
+## After the run
+
+“Connected” means that import has started. Check [Twilio integrations in Vantage](https://console.vantage.sh/settings/twilio) for cost availability and [workspace access](https://docs.vantage.sh/connecting_twilio/). Existing connections keep their current workspace assignments.
+
+Keep the local recovery records if a request times out. Do not delete a journal or key to force a retry: the remote request may have succeeded. Uncertain outcomes require review. This notebook does not offer a blanket undo because deleting integrations affects imported costs.
+
+Close the notebook session and remove its session secrets after use. “Clear view” clears the interface; it does not remove secrets from Livebook or its process environment.
