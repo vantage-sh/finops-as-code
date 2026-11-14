@@ -1,0 +1,36 @@
+id: ai-spend-overview
+title: AI spend overview
+description: AI spend this month, a three-month trend by provider, and this month by model
+
+preview:
+  scope: ai_spend
+  groupings: [provider]
+  if_empty: This dashboard needs costs from an AI provider. Connect one under Integrations, then ask again.
+
+folder:
+  title: AI Costs
+
+cost_reports:
+  by_provider:
+    title: AI Spend by Provider, Last 3 Months
+    scope: ai_spend
+    groupings: [provider]
+    date_interval: last_3_months
+    date_bin: month
+    chart_type: bar
+  by_model:
+    title: AI Spend by Model, This Month
+    scope: ai_spend
+    groupings: ["tag:vntg:ai:model"]
+    date_interval: this_month
+
+dashboard:
+  title: AI Costs
+  widgets:
+    - report: by_model
+      title: Total AI Spend This Month
+      settings: { display_type: kpi, kpi_calculation: sum, grid: { x: 0, y: 0, w: 4, h: 1 } }
+    - report: by_provider
+      settings: { display_type: chart, grid: { x: 0, y: 1, w: 6, h: 3 } }
+    - report: by_model
+      settings: { display_type: table, grid: { x: 6, y: 1, w: 6, h: 3 } }
