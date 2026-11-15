@@ -1,0 +1,700 @@
+{
+  "version": 1,
+  "skills": {
+    "dashboard-templates": [
+      {
+        "id": "ai-spend-overview-plain-ask",
+        "description": "Loads the dashboard-templates skill and its AI spend overview template from a plain ask, previews the costs in the only workspace, and stops at the confirm without creating anything",
+        "tags": [
+          "ai-spend-overview"
+        ],
+        "prompt": "Set up the AI spend overview dashboard for me.",
+        "referenceAnswer": "Acme Corp's costs in the template's preview come to $9,268.30: cursor $4,120.55, anthropic $2,875.10, open_ai $1,960.40, aws $312.25. The agent counts cursor, anthropic and open_ai whole and only AmazonBedrock from aws, and asks whether to add cartesia. The agent says it will create one AI Costs folder, 2 cost reports and one AI Costs dashboard with 3 widgets, and asks the user to confirm before creating anything.",
+        "responses": [
+          {
+            "tool": "list-workspaces",
+            "result": {
+              "workspaces": [
+                {
+                  "token": "wrkspc_eval",
+                  "name": "Acme Corp"
+                }
+              ],
+              "pagination": {
+                "hasNextPage": false
+              }
+            }
+          },
+          {
+            "tool": "list-dashboards",
+            "arguments": {
+              "workspace_token": "wrkspc_eval"
+            },
+            "result": {
+              "dashboards": [],
+              "pagination": {
+                "hasNextPage": false
+              }
+            }
+          },
+          {
+            "tool": "query-costs",
+            "arguments": {
+              "filter": "costs.provider = '*' AND tags.name = 'vntg:ai:model'",
+              "groupings": [
+                "provider",
+                "service"
+              ],
+              "date_bin": "month",
+              "start_date": "$monthStart-4",
+              "workspace_token": "wrkspc_eval"
+            },
+            "result": {
+              "costs": [
+                {
+                  "amount": "3388.20",
+                  "currency": "USD",
+                  "provider": "cursor",
+                  "service": "Claude Sonnet 4.5"
+                },
+                {
+                  "amount": "2875.10",
+                  "currency": "USD",
+                  "provider": "anthropic",
+                  "service": "Claude Opus 4.1"
+                },
+                {
+                  "amount": "1960.40",
+                  "currency": "USD",
+                  "provider": "open_ai",
+                  "service": "GPT-5"
+                },
+                {
+                  "amount": "312.25",
+                  "currency": "USD",
+                  "provider": "aws",
+                  "service": "AmazonBedrock"
+                }
+              ],
+              "total_cost": {
+                "amount": "8535.95",
+                "currency": "USD"
+              },
+              "notes": "Costs records represent the requested date range.",
+              "pagination": {
+                "hasNextPage": false
+              }
+            }
+          },
+          {
+            "tool": "query-costs",
+            "arguments": {
+              "filter": "costs.provider = '*'",
+              "groupings": [
+                "provider"
+              ],
+              "date_bin": "month",
+              "start_date": "$monthStart-4",
+              "workspace_token": "wrkspc_eval"
+            },
+            "result": {
+              "costs": [
+                {
+                  "amount": "48210.70",
+                  "currency": "USD",
+                  "provider": "aws"
+                },
+                {
+                  "amount": "4120.55",
+                  "currency": "USD",
+                  "provider": "cursor"
+                },
+                {
+                  "amount": "2875.10",
+                  "currency": "USD",
+                  "provider": "anthropic"
+                },
+                {
+                  "amount": "1960.40",
+                  "currency": "USD",
+                  "provider": "open_ai"
+                },
+                {
+                  "amount": "1404.00",
+                  "currency": "USD",
+                  "provider": "datadog"
+                },
+                {
+                  "amount": "640.00",
+                  "currency": "USD",
+                  "provider": "cartesia"
+                }
+              ],
+              "total_cost": {
+                "amount": "59210.75",
+                "currency": "USD"
+              },
+              "notes": "Costs records represent the requested date range.",
+              "pagination": {
+                "hasNextPage": false
+              }
+            }
+          },
+          {
+            "tool": "query-costs",
+            "arguments": {
+              "filter": "costs.provider = 'cursor' OR costs.provider = 'anthropic' OR costs.provider = 'open_ai' OR (costs.provider = 'aws' AND costs.service IN ('AmazonBedrock'))",
+              "groupings": [
+                "provider"
+              ],
+              "date_bin": "month",
+              "workspace_token": "wrkspc_eval"
+            },
+            "result": {
+              "costs": [
+                {
+                  "amount": "4120.55",
+                  "currency": "USD",
+                  "provider": "cursor"
+                },
+                {
+                  "amount": "2875.10",
+                  "currency": "USD",
+                  "provider": "anthropic"
+                },
+                {
+                  "amount": "1960.40",
+                  "currency": "USD",
+                  "provider": "open_ai"
+                },
+                {
+                  "amount": "312.25",
+                  "currency": "USD",
+                  "provider": "aws"
+                }
+              ],
+              "total_cost": {
+                "amount": "9268.30",
+                "currency": "USD"
+              },
+              "notes": "Costs records represent the requested date range.",
+              "pagination": {
+                "hasNextPage": false
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "ai-spend-overview-no-data",
+        "description": "Loads the AI spend overview template for an account with no matching costs, gives the template's empty-state message, and creates nothing",
+        "tags": [
+          "ai-spend-overview"
+        ],
+        "prompt": "Can you build the AI spend overview dashboard?",
+        "referenceAnswer": "There are no matching costs, so the dashboard isn't built: This dashboard needs costs from an AI provider. Connect one under Integrations, then ask again.",
+        "responses": [
+          {
+            "tool": "list-workspaces",
+            "result": {
+              "workspaces": [
+                {
+                  "token": "wrkspc_eval",
+                  "name": "Acme Corp"
+                }
+              ],
+              "pagination": {
+                "hasNextPage": false
+              }
+            }
+          },
+          {
+            "tool": "list-dashboards",
+            "arguments": {
+              "workspace_token": "wrkspc_eval"
+            },
+            "result": {
+              "dashboards": [],
+              "pagination": {
+                "hasNextPage": false
+              }
+            }
+          },
+          {
+            "tool": "query-costs",
+            "arguments": {
+              "filter": "costs.provider = '*' AND tags.name = 'vntg:ai:model'",
+              "groupings": [
+                "provider",
+                "service"
+              ],
+              "date_bin": "month",
+              "start_date": "$monthStart-4",
+              "workspace_token": "wrkspc_eval"
+            },
+            "result": {
+              "costs": [],
+              "total_cost": {
+                "amount": "0.00",
+                "currency": "USD"
+              },
+              "notes": "Costs records represent the requested date range.",
+              "pagination": {
+                "hasNextPage": false
+              }
+            }
+          },
+          {
+            "tool": "query-costs",
+            "arguments": {
+              "filter": "costs.provider = '*'",
+              "groupings": [
+                "provider"
+              ],
+              "date_bin": "month",
+              "start_date": "$monthStart-4",
+              "workspace_token": "wrkspc_eval"
+            },
+            "result": {
+              "costs": [
+                {
+                  "amount": "1404.00",
+                  "currency": "USD",
+                  "provider": "datadog"
+                }
+              ],
+              "total_cost": {
+                "amount": "1404.00",
+                "currency": "USD"
+              },
+              "notes": "Costs records represent the requested date range.",
+              "pagination": {
+                "hasNextPage": false
+              }
+            }
+          },
+          {
+            "tool": "query-costs",
+            "arguments": {
+              "filter": "costs.provider = 'cursor' OR costs.provider = 'anthropic' OR costs.provider = 'open_ai' OR (costs.provider = 'aws' AND costs.service IN ('AmazonBedrock'))",
+              "groupings": [
+                "provider"
+              ],
+              "date_bin": "month",
+              "workspace_token": "wrkspc_eval"
+            },
+            "result": {
+              "costs": [],
+              "total_cost": {
+                "amount": "0.00",
+                "currency": "USD"
+              },
+              "notes": "Costs records represent the requested date range.",
+              "pagination": {
+                "hasNextPage": false
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "ai-spend-overview-build",
+        "description": "After the user confirms, builds the AI spend overview template's folder, cost reports and dashboard exactly as the template says, checks it, and shares the link",
+        "tags": [
+          "ai-spend-overview"
+        ],
+        "prompt": "Set up the AI spend overview dashboard for me.",
+        "followUps": [
+          "Yes, go ahead."
+        ],
+        "referenceAnswer": "The agent created the AI Costs folder, the 2 cost reports (AI Spend by Provider, Last 3 Months; AI Spend by Model, This Month) and the AI Costs dashboard with 3 widgets (Total AI Spend This Month; AI Spend by Provider, Last 3 Months; AI Spend by Model, This Month), checked the dashboard, and shared https://console.vantage.sh/go/dshbrd_eval_ai-spend-overview.",
+        "requiredTools": [
+          "create-folder",
+          "create-cost-report",
+          "create-dashboard",
+          "get-dashboard"
+        ],
+        "responses": [
+          {
+            "tool": "list-workspaces",
+            "result": {
+              "workspaces": [
+                {
+                  "token": "wrkspc_eval",
+                  "name": "Acme Corp"
+                }
+              ],
+              "pagination": {
+                "hasNextPage": false
+              }
+            }
+          },
+          {
+            "tool": "list-dashboards",
+            "arguments": {
+              "workspace_token": "wrkspc_eval"
+            },
+            "result": {
+              "dashboards": [],
+              "pagination": {
+                "hasNextPage": false
+              }
+            }
+          },
+          {
+            "tool": "query-costs",
+            "arguments": {
+              "filter": "costs.provider = '*' AND tags.name = 'vntg:ai:model'",
+              "groupings": [
+                "provider",
+                "service"
+              ],
+              "date_bin": "month",
+              "start_date": "$monthStart-4",
+              "workspace_token": "wrkspc_eval"
+            },
+            "result": {
+              "costs": [
+                {
+                  "amount": "3388.20",
+                  "currency": "USD",
+                  "provider": "cursor",
+                  "service": "Claude Sonnet 4.5"
+                },
+                {
+                  "amount": "2875.10",
+                  "currency": "USD",
+                  "provider": "anthropic",
+                  "service": "Claude Opus 4.1"
+                },
+                {
+                  "amount": "1960.40",
+                  "currency": "USD",
+                  "provider": "open_ai",
+                  "service": "GPT-5"
+                },
+                {
+                  "amount": "312.25",
+                  "currency": "USD",
+                  "provider": "aws",
+                  "service": "AmazonBedrock"
+                }
+              ],
+              "total_cost": {
+                "amount": "8535.95",
+                "currency": "USD"
+              },
+              "notes": "Costs records represent the requested date range.",
+              "pagination": {
+                "hasNextPage": false
+              }
+            }
+          },
+          {
+            "tool": "query-costs",
+            "arguments": {
+              "filter": "costs.provider = '*'",
+              "groupings": [
+                "provider"
+              ],
+              "date_bin": "month",
+              "start_date": "$monthStart-4",
+              "workspace_token": "wrkspc_eval"
+            },
+            "result": {
+              "costs": [
+                {
+                  "amount": "48210.70",
+                  "currency": "USD",
+                  "provider": "aws"
+                },
+                {
+                  "amount": "4120.55",
+                  "currency": "USD",
+                  "provider": "cursor"
+                },
+                {
+                  "amount": "2875.10",
+                  "currency": "USD",
+                  "provider": "anthropic"
+                },
+                {
+                  "amount": "1960.40",
+                  "currency": "USD",
+                  "provider": "open_ai"
+                },
+                {
+                  "amount": "1404.00",
+                  "currency": "USD",
+                  "provider": "datadog"
+                },
+                {
+                  "amount": "640.00",
+                  "currency": "USD",
+                  "provider": "cartesia"
+                }
+              ],
+              "total_cost": {
+                "amount": "59210.75",
+                "currency": "USD"
+              },
+              "notes": "Costs records represent the requested date range.",
+              "pagination": {
+                "hasNextPage": false
+              }
+            }
+          },
+          {
+            "tool": "query-costs",
+            "arguments": {
+              "filter": "costs.provider = 'cursor' OR costs.provider = 'anthropic' OR costs.provider = 'open_ai' OR (costs.provider = 'aws' AND costs.service IN ('AmazonBedrock'))",
+              "groupings": [
+                "provider"
+              ],
+              "date_bin": "month",
+              "workspace_token": "wrkspc_eval"
+            },
+            "result": {
+              "costs": [
+                {
+                  "amount": "4120.55",
+                  "currency": "USD",
+                  "provider": "cursor"
+                },
+                {
+                  "amount": "2875.10",
+                  "currency": "USD",
+                  "provider": "anthropic"
+                },
+                {
+                  "amount": "1960.40",
+                  "currency": "USD",
+                  "provider": "open_ai"
+                },
+                {
+                  "amount": "312.25",
+                  "currency": "USD",
+                  "provider": "aws"
+                }
+              ],
+              "total_cost": {
+                "amount": "9268.30",
+                "currency": "USD"
+              },
+              "notes": "Costs records represent the requested date range.",
+              "pagination": {
+                "hasNextPage": false
+              }
+            }
+          },
+          {
+            "tool": "create-folder",
+            "arguments": {
+              "title": "AI Costs",
+              "type": "CostFolder",
+              "workspace_token": "wrkspc_eval"
+            },
+            "result": {
+              "title": "AI Costs",
+              "type": "CostFolder",
+              "workspace_token": "wrkspc_eval",
+              "token": "fldr_eval_ai-spend-overview"
+            }
+          },
+          {
+            "tool": "create-cost-report",
+            "arguments": {
+              "title": "AI Spend by Provider, Last 3 Months",
+              "groupings": [
+                "provider"
+              ],
+              "date_interval": "last_3_months",
+              "date_bin": "month",
+              "chart_type": "bar",
+              "filter": "costs.provider = 'cursor' OR costs.provider = 'anthropic' OR costs.provider = 'open_ai' OR (costs.provider = 'aws' AND costs.service IN ('AmazonBedrock'))",
+              "folder_token": "fldr_eval_ai-spend-overview",
+              "workspace_token": "wrkspc_eval"
+            },
+            "absent": [],
+            "result": {
+              "token": "rprt_eval_ai-spend-overview_by_provider",
+              "title": "AI Spend by Provider, Last 3 Months",
+              "folder_token": "fldr_eval_ai-spend-overview"
+            }
+          },
+          {
+            "tool": "create-cost-report",
+            "arguments": {
+              "title": "AI Spend by Model, This Month",
+              "groupings": [
+                "tag:vntg:ai:model"
+              ],
+              "date_interval": "this_month",
+              "filter": "costs.provider = 'cursor' OR costs.provider = 'anthropic' OR costs.provider = 'open_ai' OR (costs.provider = 'aws' AND costs.service IN ('AmazonBedrock'))",
+              "folder_token": "fldr_eval_ai-spend-overview",
+              "workspace_token": "wrkspc_eval"
+            },
+            "absent": [
+              "date_bin",
+              "chart_type"
+            ],
+            "result": {
+              "token": "rprt_eval_ai-spend-overview_by_model",
+              "title": "AI Spend by Model, This Month",
+              "folder_token": "fldr_eval_ai-spend-overview"
+            }
+          },
+          {
+            "tool": "create-dashboard",
+            "arguments": {
+              "title": "AI Costs",
+              "workspace_token": "wrkspc_eval",
+              "widgets": [
+                {
+                  "widgetable_token": "rprt_eval_ai-spend-overview_by_model",
+                  "title": "Total AI Spend This Month",
+                  "settings": {
+                    "display_type": "kpi",
+                    "kpi_calculation": "sum",
+                    "grid": {
+                      "x": 0,
+                      "y": 0,
+                      "w": 4,
+                      "h": 1
+                    }
+                  }
+                },
+                {
+                  "widgetable_token": "rprt_eval_ai-spend-overview_by_provider",
+                  "settings": {
+                    "display_type": "chart",
+                    "grid": {
+                      "x": 0,
+                      "y": 1,
+                      "w": 6,
+                      "h": 3
+                    }
+                  }
+                },
+                {
+                  "widgetable_token": "rprt_eval_ai-spend-overview_by_model",
+                  "settings": {
+                    "display_type": "table",
+                    "grid": {
+                      "x": 6,
+                      "y": 1,
+                      "w": 6,
+                      "h": 3
+                    }
+                  }
+                }
+              ]
+            },
+            "absent": [
+              "date_interval",
+              "start_date",
+              "end_date",
+              "date_bin"
+            ],
+            "result": {
+              "title": "AI Costs",
+              "token": "dshbrd_eval_ai-spend-overview",
+              "workspace_token": "wrkspc_eval",
+              "widgets": [
+                {
+                  "widgetable_token": "rprt_eval_ai-spend-overview_by_model",
+                  "title": "Total AI Spend This Month",
+                  "settings": {
+                    "display_type": "kpi",
+                    "kpi_calculation": "sum",
+                    "grid": {
+                      "x": 0,
+                      "y": 0,
+                      "w": 4,
+                      "h": 1
+                    }
+                  }
+                },
+                {
+                  "widgetable_token": "rprt_eval_ai-spend-overview_by_provider",
+                  "settings": {
+                    "display_type": "chart",
+                    "grid": {
+                      "x": 0,
+                      "y": 1,
+                      "w": 6,
+                      "h": 3
+                    }
+                  }
+                },
+                {
+                  "widgetable_token": "rprt_eval_ai-spend-overview_by_model",
+                  "settings": {
+                    "display_type": "table",
+                    "grid": {
+                      "x": 6,
+                      "y": 1,
+                      "w": 6,
+                      "h": 3
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tool": "get-dashboard",
+            "arguments": {
+              "dashboard_token": "dshbrd_eval_ai-spend-overview"
+            },
+            "result": {
+              "title": "AI Costs",
+              "token": "dshbrd_eval_ai-spend-overview",
+              "workspace_token": "wrkspc_eval",
+              "widgets": [
+                {
+                  "widgetable_token": "rprt_eval_ai-spend-overview_by_model",
+                  "title": "Total AI Spend This Month",
+                  "settings": {
+                    "display_type": "kpi",
+                    "kpi_calculation": "sum",
+                    "grid": {
+                      "x": 0,
+                      "y": 0,
+                      "w": 4,
+                      "h": 1
+                    }
+                  }
+                },
+                {
+                  "widgetable_token": "rprt_eval_ai-spend-overview_by_provider",
+                  "settings": {
+                    "display_type": "chart",
+                    "grid": {
+                      "x": 0,
+                      "y": 1,
+                      "w": 6,
+                      "h": 3
+                    }
+                  }
+                },
+                {
+                  "widgetable_token": "rprt_eval_ai-spend-overview_by_model",
+                  "settings": {
+                    "display_type": "table",
+                    "grid": {
+                      "x": 6,
+                      "y": 1,
+                      "w": 6,
+                      "h": 3
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "version": 2,
+  "skills": [
+    {
+      "name": "dashboard-templates",
+      "description": "Builds a ready-made dashboard in the user's Vantage account from one of its templates, such as the AI spend overview (AI spend this month, a three-month trend by provider, and this month by model). Shows a preview and asks before creating anything. Use when a user asks to set up, create or install a ready-made dashboard, such as an AI spend or AI costs dashboard, or asks which dashboards can be set up for them.",
+      "tools": [
+        "list-workspaces",
+        "query-costs",
+        "list-dashboards",
+        "create-folder",
+        "create-cost-report",
+        "create-dashboard",
+        "get-dashboard",
+        "delete-dashboard",
+        "delete-cost-report",
+        "delete-folder"
+      ],
+      "files": [
+        "references/ai-spend-overview.yaml"
+      ],
+      "bundle": "skills/dashboard-templates.821da70f3d73.json",
+      "templates": [
+        {
+          "id": "ai-spend-overview",
+          "title": "AI spend overview",
+          "description": "AI spend this month, a three-month trend by provider, and this month by model",
+          "widgets": [
+            {
+              "title": "Total AI Spend This Month",
+              "display_type": "kpi",
+              "grid": {
+                "x": 0,
+                "y": 0,
+                "w": 4,
+                "h": 1
+              }
+            },
+            {
+              "title": "AI Spend by Provider, Last 3 Months",
+              "display_type": "chart",
+              "chart_type": "bar",
+              "grid": {
+                "x": 0,
+                "y": 1,
+                "w": 6,
+                "h": 3
+              }
+            },
+            {
+              "title": "AI Spend by Model, This Month",
+              "display_type": "table",
+              "grid": {
+                "x": 6,
+                "y": 1,
+                "w": 6,
+                "h": 3
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
