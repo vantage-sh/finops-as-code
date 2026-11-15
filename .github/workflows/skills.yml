@@ -1,0 +1,86 @@
+name: Skills
+
+on:
+  pull_request:
+    paths:
+      - "skills/**"
+      - "scripts/check_skills.py"
+      - "scripts/test_check_skills.py"
+      - ".github/workflows/skills.yml"
+  push:
+    branches: [main]
+    paths:
+      - "skills/**"
+      - "scripts/check_skills.py"
+      - "scripts/test_check_skills.py"
+      - ".github/workflows/skills.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6" # a uv release this setup-uv checks against the checksum it ships with
+
+      - name: Test the check
+        run: uv run scripts/test_check_skills.py
+
+      # The same build a merge publishes, so a pull request that passes is one that builds.
+      - name: Check every skill and build the catalog
+        run: uv run scripts/check_skills.py --build "$RUNNER_TEMP/catalog"
+
+  # The only writer of the catalog branch, which the FinOps Agent reads. It builds main's newest commit, so a re-run of
+  # an older run can't bring back an older catalog, and the concurrency group lands one build at a time.
+  publish:
+    needs: check
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: skills-catalog
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6" # a uv release this setup-uv checks against the checksum it ships with
+
+      - name: Build the catalog
+        run: uv run scripts/check_skills.py --build "$RUNNER_TEMP/catalog"
+
+      - name: Push it to the catalog branch
+        env:
+          BUILD: ${{ runner.temp }}/catalog
+        run: |
+          set -euo pipefail
+          main=$(git rev-parse HEAD)
+          export GIT_INDEX_FILE="$RUNNER_TEMP/catalog.index"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          parent=""
+          if git ls-remote --exit-code --heads origin catalog > /dev/null; then
+            git fetch --no-tags origin catalog
+            parent=$(git rev-parse FETCH_HEAD)
+            # Carry forward every bundle the branch has published, so an agent on an older map can always load what it
+            # names. A bundle's name is a hash of its content, so one this build also wrote is the same file.
+            git archive "$parent" skills | tar -x -C "$BUILD"
+          fi
+          git --work-tree="$BUILD" add --all
+          tree=$(git write-tree)
+          if [ -n "$parent" ] && [ "$tree" = "$(git rev-parse "$parent^{tree}")" ]; then
+            echo "The catalog is unchanged."
+            exit 0
+          fi
+          commit=$(git commit-tree "$tree" ${parent:+-p "$parent"} -m "Build the catalog from main at $main")
+          git push origin "$commit:refs/heads/catalog"
