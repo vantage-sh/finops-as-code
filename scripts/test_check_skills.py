@@ -247,6 +247,21 @@ def test_templates(template: str, table: str, problem: str) -> None:
     assert any(problem in found for found in skill_problems(template_skill(template, table)))
 
 
+@pytest.mark.parametrize(("field", "value", "limit"), [("title", "Demo", 200), ("description", "One report", 1_024)])
+def test_a_title_runs_to_200_characters_and_a_description_to_1024(field: str, value: str, limit: int) -> None:
+    """The console's Set up link carries a template's title, so it stops at 200, and a description stops at 1,024."""
+
+    def skill(text: str) -> Skill:
+        """Return the demo template skill with the field set to the text, in its file and its Templates row alike."""
+        template = TEMPLATE.replace(f"{field}: {value}\n", f"{field}: {text}\n", 1)
+        return template_skill(template, TABLE.replace(value, text))
+
+    assert all_problems([skill("x" * limit)]) == []
+    assert all_problems([skill("x" * (limit + 1))]) == [
+        f"skills/dashboard-templates: references/demo.yaml: {field} must be text of 1 to {limit} characters"
+    ]
+
+
 def test_a_kpi_can_be_one_row_high() -> None:
     """The console permits a KPI one row high, while a chart or table needs two."""
     template = TEMPLATE.replace("display_type: chart", "display_type: kpi").replace("h: 3", "h: 1")

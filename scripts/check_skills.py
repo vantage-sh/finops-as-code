@@ -70,6 +70,7 @@ JSON_ONLY = (
 )
 
 DASHBOARD_TEMPLATES = "dashboard-templates"  # the one skill whose Templates table lists dashboard templates
+MAX_TEMPLATE_TITLE_CHARS = 200  # the console's Set up link carries a template's title, and servers refuse long URLs
 # The periods a report may use, the ones Step 3 covers from the first day of the month four months ago, for a scope's
 # searches and a filter's check alike. Vantage starts last_3_months on the first of the month three months before
 # the day two days ago, so during a month's first two days it starts four months back.
@@ -387,7 +388,11 @@ def dashboard_template_problems(stem: str, template: object, scopes: dict) -> It
         yield JSON_ONLY
     if template.get("id") != stem:
         yield f"id must be {stem}, the file's name"
-    yield from (f"{field} must be text" for field in ("title", "description") if not one_line(template.get(field)))
+    yield from (
+        f"{field} must be text of 1 to {limit} characters"
+        for field, limit in (("title", MAX_TEMPLATE_TITLE_CHARS), ("description", MAX_DESCRIPTION_CHARS))
+        if not 1 <= js_length(one_line(template.get(field))) <= limit
+    )
 
     preview = mapping(template.get("preview"))
     yield from filter_problems("preview", template.get("preview"), scopes)

@@ -121,7 +121,7 @@ The build copies them into the `dashboard-templates` entry in `index.json`, in t
 ]
 ```
 
-To draw one, lay out 12 equal columns and as many equal rows as the lowest widget reaches, place each widget from column `x + 1` across `w` columns and from row `y + 1` down `h` rows, and draw its kind. The agent ignores `templates`. Whatever draws them reads a public repository over the network, so it shows every title and description as text and skips a widget whose kind or numbers fall outside these rules.
+To draw one, lay out 12 equal columns and as many equal rows as the lowest widget reaches, place each widget from column `x + 1` across `w` columns and from row `y + 1` down `h` rows, and draw its kind. The agent ignores `templates`. A template's `title` runs to 200 characters, since the console's Set up link carries it, and its `description` to 1,024, like a skill's. Whatever draws them reads a public repository over the network, so it shows every title and description as text, skips a template whose title or description runs longer, and skips a widget whose kind or numbers fall outside these rules.
 
 ### Eval cases
 
