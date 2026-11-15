@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
@@ -15,7 +16,10 @@ import pytest
 import yaml
 
 from check_skills import (
+    BUILT_IN_SKILLS,
+    CHART_TYPES,
     DASHBOARD_TEMPLATES,
+    DISPLAY_TYPES,
     SAMPLE_FILTER,
     SAMPLE_SORT,
     SAMPLE_WORKSPACE,
@@ -70,6 +74,29 @@ def template_skill(template: str = TEMPLATE, table: str = TABLE, scopes: str = S
     """Return the dashboard-templates skill with one template file."""
     source = skill_md(DASHBOARD_TEMPLATES, tools=TEMPLATE_TOOLS, body=table + scopes)
     return Skill(DASHBOARD_TEMPLATES, source, {"references/demo.yaml": template})
+
+
+def with_text(field: str, value: str, text: str) -> Skill:
+    """Return the demo template skill with one field's text changed, in its file and its Templates row alike."""
+    template = TEMPLATE.replace(f"{field}: {value}\n", f"{field}: {text}\n", 1)
+    return template_skill(template, TABLE.replace(value, text))
+
+
+def renamed_template_skill(stem: str) -> Skill:
+    """Return the demo template skill with its file, its id and its Templates row all named for the stem."""
+    template, table = TEMPLATE.replace("id: demo", f"id: {stem}"), TABLE.replace("demo.yaml", f"{stem}.yaml")
+    return replace(template_skill(table=table), files={f"references/{stem}.yaml": template})
+
+
+def widget_skill(kind: str, height: int) -> Skill:
+    """Return the demo template skill with its one widget drawn as the kind, at the height."""
+    template = TEMPLATE.replace("display_type: chart", f"display_type: {kind}").replace("h: 3", f"h: {height}")
+    return template_skill(template)
+
+
+def published_rules() -> dict:
+    """Return the rules the map publishes: the limits Scout and the console compare with their own."""
+    return json.loads(catalog_files([template_skill()])["index.json"])["rules"]
 
 
 def eval_skill(source: str = CASE, path: str = "evals/explain.yaml") -> Skill:
@@ -250,16 +277,85 @@ def test_templates(template: str, table: str, problem: str) -> None:
 @pytest.mark.parametrize(("field", "value", "limit"), [("title", "Demo", 200), ("description", "One report", 1_024)])
 def test_a_title_runs_to_200_characters_and_a_description_to_1024(field: str, value: str, limit: int) -> None:
     """The console's Set up link carries a template's title, so it stops at 200, and a description stops at 1,024."""
-
-    def skill(text: str) -> Skill:
-        """Return the demo template skill with the field set to the text, in its file and its Templates row alike."""
-        template = TEMPLATE.replace(f"{field}: {value}\n", f"{field}: {text}\n", 1)
-        return template_skill(template, TABLE.replace(value, text))
-
-    assert all_problems([skill("x" * limit)]) == []
-    assert all_problems([skill("x" * (limit + 1))]) == [
+    assert all_problems([with_text(field, value, "x" * limit)]) == []
+    assert all_problems([with_text(field, value, "x" * (limit + 1))]) == [
         f"skills/dashboard-templates: references/demo.yaml: {field} must be text of 1 to {limit} characters"
     ]
+
+
+def test_a_template_id_runs_to_240_characters() -> None:
+    """A template's eval case ids add up to 10 characters to its id, and the harness stops a case id at 250."""
+    assert all_problems([renamed_template_skill("x" * 240)]) == []
+    too_long = "x" * 241
+    assert all_problems([renamed_template_skill(too_long)]) == [
+        f"skills/dashboard-templates: references/{too_long}.yaml: id must be at most 240 characters, so its eval case"
+        " ids fit in 250"
+    ]
+
+
+def test_a_widget_ends_by_row_100() -> None:
+    """The gallery draws a template's first 100 rows, so a widget can end on the last one and no further down."""
+    assert all_problems([template_skill(TEMPLATE.replace("y: 0", "y: 97"))]) == []
+    assert all_problems([template_skill(TEMPLATE.replace("y: 0", "y: 98"))]) == [
+        "skills/dashboard-templates: references/demo.yaml: dashboard.widgets[0].settings.grid must fit the dashboard's"
+        " 12 columns and the gallery's 100 rows, from x 0 and y 0"
+    ]
+
+
+def test_the_map_publishes_its_rules_under_the_keys_scout_and_the_console_read() -> None:
+    """Scout and the console look each rule up by name, so a renamed key hides that rule from them."""
+    rules = published_rules()
+    assert set(rules) == {
+        "max_index_chars", "max_file_chars", "max_bundle_chars", "max_description_chars", "reserved_names", "templates"
+    }
+    assert set(rules["templates"]) == {
+        "display_types", "chart_types", "grid_columns", "max_grid_rows", "min_grid_width", "min_grid_height",
+        "max_id_chars", "max_title_chars", "max_description_chars",
+    }
+    assert set(rules["templates"]["min_grid_height"]) == set(rules["templates"]["display_types"])
+
+
+# Each published template limit, a template at that limit, and the step that takes it one past: the check takes the
+# first and refuses the second, so the published number is where the check really stops.
+PUBLISHED_LIMITS = [
+    (("grid_columns",), lambda n: template_skill(TEMPLATE.replace("x: 0", f"x: {n - 6}")), 1),
+    (("max_grid_rows",), lambda n: template_skill(TEMPLATE.replace("y: 0", f"y: {n - 3}")), 1),
+    (("max_id_chars",), lambda n: renamed_template_skill("x" * n), 1),
+    (("max_title_chars",), lambda n: with_text("title", "Demo", "x" * n), 1),
+    (("max_description_chars",), lambda n: with_text("description", "One report", "x" * n), 1),
+    (("min_grid_width",), lambda n: template_skill(TEMPLATE.replace("w: 6", f"w: {n}")), -1),
+    (("min_grid_height", "kpi"), lambda n: widget_skill("kpi", n), -1),
+    (("min_grid_height", "chart"), lambda n: widget_skill("chart", n), -1),
+    (("min_grid_height", "table"), lambda n: widget_skill("table", n), -1),
+]
+
+
+@pytest.mark.parametrize(("path", "at", "step"), PUBLISHED_LIMITS, ids=[".".join(row[0]) for row in PUBLISHED_LIMITS])
+def test_each_published_template_limit_is_where_the_check_stops(
+    path: tuple[str, ...], at: Callable[[int], Skill], step: int
+) -> None:
+    """A template at a published limit passes and one a step past fails, so the map publishes the check's own rules."""
+    limit = published_rules()["templates"]
+    for key in path:
+        limit = limit[key]
+    assert all_problems([at(limit)]) == []
+    assert all_problems([at(limit + step)]) != []
+
+
+def test_the_map_publishes_every_kind_the_check_takes_and_every_name_it_refuses() -> None:
+    """The published lists are the check's own, so none can shrink unseen, and each kind passes and each name fails."""
+    rules = published_rules()
+    assert rules["templates"]["display_types"] == list(DISPLAY_TYPES)
+    assert rules["templates"]["chart_types"] == list(CHART_TYPES)
+    assert set(rules["reserved_names"]) == BUILT_IN_SKILLS
+    kinds = [widget_skill(kind, 3) for kind in rules["templates"]["display_types"]]
+    charts = [
+        template_skill(TEMPLATE.replace("chart_type: bar", f"chart_type: {chart}"))
+        for chart in rules["templates"]["chart_types"]
+    ]
+    assert [all_problems([skill]) for skill in kinds + charts] == [[] for _ in kinds + charts]
+    refused = [list(skill_problems(Skill(name, skill_md(name=name), {}))) for name in rules["reserved_names"]]
+    assert all(any("built-in skills" in problem for problem in problems) for problems in refused)
 
 
 def test_a_kpi_can_be_one_row_high() -> None:
@@ -574,7 +670,7 @@ def test_the_map_names_each_skill_and_its_bundle_carries_the_skill_with_lf_line_
         "files": ["references/demo.yaml"],
         "bundle": bundle,
     }
-    assert json.loads(catalog["index.json"]) == {"version": 2, "skills": [entry]}
+    assert json.loads(catalog["index.json"]) == {"version": 2, "rules": published_rules(), "skills": [entry]}
     assert json.loads(catalog[bundle]) == {
         "name": "demo",
         "body": skill_md(),
