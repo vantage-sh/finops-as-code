@@ -33,6 +33,7 @@ TEMPLATE_TOOLS = (
 )
 SCOPES = "## Scopes\n\n```yaml\nai_spend: costs.provider = 'aws'\n```\n"
 TABLE = "## Templates\n\n| Template | What it builds |\n|---|---|\n| [Demo](references/demo.yaml) | One report |\n\n"
+SETTINGS = "{ display_type: chart, grid: { x: 0, y: 0, w: 6, h: 3 } }"
 TEMPLATE = """\
 id: demo
 title: Demo
@@ -40,12 +41,12 @@ description: One report
 preview: { scope: ai_spend, groupings: [provider], if_empty: Connect a provider. }
 folder: { title: Demo }
 cost_reports:
-  only: { title: Only, scope: ai_spend, groupings: [provider], date_interval: this_month }
+  only: { title: Only, scope: ai_spend, groupings: [provider], date_interval: this_month, chart_type: bar }
 dashboard:
   title: Demo
   widgets:
-    - { report: only, settings: { display_type: chart } }
-"""
+    - { report: only, settings: SETTINGS }
+""".replace("SETTINGS", SETTINGS)
 CASE = """\
 - id: forecast-notes-explain
   description: Explains the forecast
@@ -166,7 +167,34 @@ def test_an_eval_case_with_a_date_key_gets_its_problem_instead_of_a_traceback() 
         (TEMPLATE.replace(", date_interval: this_month", ""), TABLE, "cost_reports.only.date_interval must be text"),
         (TEMPLATE.replace("[provider], date", "provider, date"), TABLE, "cost_reports.only.groupings must be a list"),
         (TEMPLATE.replace("{ report: only,", "{ report: only, title: [x],"), TABLE, "widgets[0].title must be text"),
-        (TEMPLATE.replace("{ display_type: chart }", "chart"), TABLE, "widgets[0].settings must be a mapping"),
+        (TEMPLATE.replace(SETTINGS, "chart"), TABLE, "widgets[0].settings must be a mapping"),
+        (TEMPLATE.replace("display_type: chart", "display_type: typo"), TABLE, "settings.display_type must be one of"),
+        (TEMPLATE.replace(SETTINGS, "{ display_type: chart }"), TABLE, "settings.grid must set x, y, w and h"),
+        (TEMPLATE.replace("x: 0", "x: true"), TABLE, "settings.grid must set x, y, w and h"),
+        (TEMPLATE.replace("w: 6", "w: 6.0"), TABLE, "settings.grid must set x, y, w and h"),
+        (TEMPLATE.replace("h: 3", "h: 3, z: 1"), TABLE, "settings.grid must set x, y, w and h"),
+        (TEMPLATE.replace("x: 0", "1: 0"), TABLE, "settings.grid must set x, y, w and h"),
+        (TEMPLATE.replace("x: 0", "x: 7"), TABLE, "settings.grid must fit the dashboard's 12 columns"),
+        (TEMPLATE.replace("y: 0", "y: -1"), TABLE, "settings.grid must fit the dashboard's 12 columns"),
+        (TEMPLATE.replace("h: 3", "h: 1"), TABLE, "settings.grid must be at least 2 wide and 2 high for a chart"),
+        (TEMPLATE.replace("w: 6", "w: 1"), TABLE, "settings.grid must be at least 2 wide and 2 high for a chart"),
+        (
+            TEMPLATE.replace("display_type: chart", "display_type: table").replace("h: 3", "h: 1"),
+            TABLE,
+            "settings.grid must be at least 2 wide and 2 high for a table",
+        ),
+        (
+            TEMPLATE.replace("display_type: chart", "display_type: kpi").replace("h: 3", "h: 0"),
+            TABLE,
+            "settings.grid must be at least 2 wide and 1 high for a kpi",
+        ),
+        (TEMPLATE.replace(", chart_type: bar", ""), TABLE, "is a chart, so its report must set chart_type"),
+        (TEMPLATE.replace("chart_type: bar", "chart_type: typo"), TABLE, "cost_reports.only.chart_type must be one of"),
+        (
+            TEMPLATE + f"    - {{ report: only, settings: {SETTINGS} }}\n",
+            TABLE,
+            "widgets[0] and dashboard.widgets[1] overlap on the grid",
+        ),
         (
             TEMPLATE.replace("dashboard:\n  title: Demo\n", "dashboard:\n  title: Demo\n  date_interval: this_month\n"),
             TABLE,
@@ -219,6 +247,58 @@ def test_templates(template: str, table: str, problem: str) -> None:
     assert any(problem in found for found in skill_problems(template_skill(template, table)))
 
 
+def test_a_kpi_can_be_one_row_high() -> None:
+    """The console permits a KPI one row high, while a chart or table needs two."""
+    template = TEMPLATE.replace("display_type: chart", "display_type: kpi").replace("h: 3", "h: 1")
+    assert all_problems([template_skill(template)]) == []
+
+
+def test_a_chart_type_typo_is_reported_once_on_its_report() -> None:
+    """A misspelled chart_type gets one problem, on its report, and none on the chart that uses it."""
+    template = TEMPLATE.replace("chart_type: bar", "chart_type: typo")
+    assert [problem for problem in skill_problems(template_skill(template)) if "chart_type" in problem] == [
+        "references/demo.yaml: cost_reports.only.chart_type must be one of area, line, bar, multi_bar, pie"
+    ]
+
+
+def test_the_map_carries_thumbnails_in_table_order_with_only_the_fields_a_tile_needs() -> None:
+    """The table orders thumbnails, widget titles fall back to reports, and only charts carry a chart type."""
+    template = parse_yaml(TEMPLATE)
+    widgets = [
+        {"report": "only", "settings": {"display_type": "chart", "grid": {"x": 0, "y": 0, "w": 6, "h": 2}}},
+        {"report": "only", "title": "Total", "settings": {
+            "display_type": "kpi", "kpi_calculation": "sum", "grid": {"x": 6, "y": 0, "w": 6, "h": 1},
+        }},
+        {"report": "only", "settings": {"display_type": "table", "grid": {"x": 6, "y": 1, "w": 6, "h": 2}}},
+    ]
+    template = {**template, "dashboard": {**template["dashboard"], "widgets": widgets}}
+    other = {**template, "id": "other", "title": "Other"}
+    table = TABLE.replace("| [Demo]", "| [Other](references/other.yaml) | One report |\n| [Demo]")
+    skill = replace(template_skill(table=table), files={
+        "references/demo.yaml": yaml.safe_dump(template), "references/other.yaml": yaml.safe_dump(other),
+    })
+    assert all_problems([skill]) == []
+    catalog = catalog_files([skill])
+    entry = json.loads(catalog["index.json"])["skills"][0]
+    expected = [
+        {"title": "Only", "display_type": "chart", "chart_type": "bar", "grid": {"x": 0, "y": 0, "w": 6, "h": 2}},
+        {"title": "Total", "display_type": "kpi", "grid": {"x": 6, "y": 0, "w": 6, "h": 1}},
+        {"title": "Only", "display_type": "table", "grid": {"x": 6, "y": 1, "w": 6, "h": 2}},
+    ]
+    assert entry["templates"] == [
+        {"id": "other", "title": "Other", "description": "One report", "widgets": expected},
+        {"id": "demo", "title": "Demo", "description": "One report", "widgets": expected},
+    ]
+    assert set(json.loads(catalog[entry["bundle"]])) == {"name", "body", "files"}
+
+
+def test_a_broken_template_gets_its_problem_and_no_thumbnail() -> None:
+    """The size check can build the map for a broken template without indexing into its missing grid."""
+    skill = template_skill(TEMPLATE.replace(SETTINGS, "{ display_type: chart }"))
+    assert any("settings.grid must set x, y, w and h" in problem for problem in all_problems([skill]))
+    assert "templates" not in json.loads(catalog_files([skill])["index.json"])["skills"][0]
+
+
 def test_a_report_sets_its_period_only_as_a_date_interval() -> None:
     """Vantage gives a report with a start_date or end_date a fixed range in place of its date_interval, which can reach
     back past what Step 3 searched, so either one fails, quoted or as a YAML date, which isn't JSON data either."""
@@ -234,17 +314,20 @@ def test_a_report_sets_its_period_only_as_a_date_interval() -> None:
 @pytest.mark.parametrize(
     ("settings", "problems"),
     [
-        ("{ 2026-11-14: chart }", [JSON_ONLY]),
-        ("{ !!binary aGk=: chart }", [JSON_ONLY]),
-        ("{ on: chart }", [JSON_ONLY]),
-        ("{ display_type: !!set { chart } }", [JSON_ONLY]),
-        ("{ '2026-11-14': chart, 'on': chart }", []),
+        (SETTINGS.replace("chart,", "chart, 2026-11-14: x,"), [JSON_ONLY]),
+        (SETTINGS.replace("chart,", "chart, !!binary aGk=: x,"), [JSON_ONLY]),
+        (SETTINGS.replace("chart,", "chart, on: x,"), [JSON_ONLY]),
+        (
+            SETTINGS.replace("chart,", "!!set { chart },"),
+            [JSON_ONLY, "dashboard.widgets[0].settings.display_type must be one of kpi, chart, table"],
+        ),
+        (SETTINGS.replace("chart,", "chart, '2026-11-14': x, 'on': x,"), []),
     ],
 )
 def test_a_template_holds_only_json_data(settings: str, problems: list[str]) -> None:
     """A widget's settings go into the build case, so a key YAML reads as a date, bytes or true, or a set, fails with
     the template named instead of a traceback or a fixture the template doesn't spell, and a quoted key passes."""
-    template = TEMPLATE.replace("{ display_type: chart }", settings)
+    template = TEMPLATE.replace(SETTINGS, settings)
     assert all_problems([template_skill(template)]) == [
         f"skills/dashboard-templates: references/demo.yaml: {problem}" for problem in problems
     ]
@@ -325,13 +408,17 @@ def test_a_template_generates_three_cases_that_build_exactly_what_it_says() -> N
         "title": "Only",
         "groupings": ["provider"],
         "date_interval": "this_month",
+        "chart_type": "bar",
         "filter": SAMPLE_FILTER,
         "folder_token": "fldr_eval_demo",
         "workspace_token": SAMPLE_WORKSPACE,
     }
-    assert report["absent"] == ["date_bin", "chart_type"]
+    assert report["absent"] == ["date_bin"]
     assert dashboard["arguments"]["widgets"] == [
-        {"widgetable_token": "rprt_eval_demo_only", "settings": {"display_type": "chart"}}
+        {
+            "widgetable_token": "rprt_eval_demo_only",
+            "settings": {"display_type": "chart", "grid": {"x": 0, "y": 0, "w": 6, "h": 3}},
+        }
     ]
     assert dashboard["absent"] == ["date_interval", "start_date", "end_date", "date_bin"]
     assert build["followUps"] == ["Yes, go ahead."]

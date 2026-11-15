@@ -23,7 +23,7 @@ from collections import Counter
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from decimal import Decimal
-from itertools import groupby
+from itertools import combinations, groupby
 from pathlib import Path
 
 import yaml
@@ -85,6 +85,15 @@ SEARCHED_INTERVALS = (
 # filter. It leaves out start_date and end_date, since Vantage gives a report with either one a fixed range in place of
 # its date_interval, which can reach back past what Step 3 searched.
 REPORT_FIELDS = ("title", "scope", "filter", "groupings", "date_interval", "date_bin", "chart_type")
+# How a template's widgets can be drawn and placed: the Vantage MCP server's display and chart types, and the console's
+# 12-column dashboard grid with its smallest widget sizes. Each template's thumbnail is drawn from these, so the check
+# holds a template to them, and a new type is one more entry here.
+DISPLAY_TYPES = ("kpi", "chart", "table")
+CHART_TYPES = ("area", "line", "bar", "multi_bar", "pie")
+GRID_FIELDS = ("x", "y", "w", "h")
+GRID_COLUMNS = 12
+MIN_GRID_WIDTH = 2
+MIN_GRID_HEIGHT = {"kpi": 1, "chart": 2, "table": 2}
 
 # The fake account a template's eval cases run against: one workspace, no dashboards, and four rows of costs.
 SAMPLE_WORKSPACE = "wrkspc_eval"
@@ -322,6 +331,53 @@ def filter_problems(where: str, part: object, scopes: dict) -> Iterator[str]:
     )
 
 
+def whole_grid(settings: dict) -> dict | None:
+    """Return the grid when it's exactly x, y, w and h, each a whole number (a bool isn't), otherwise None."""
+    grid = mapping(settings.get("grid"))
+    whole = set(grid) == set(GRID_FIELDS) and all(type(grid[key]) is int for key in GRID_FIELDS)
+    return grid if whole else None
+
+
+def widget_problems(index: int, widget: object, reports: dict) -> Iterator[str]:
+    """Yield what's wrong with how one widget is drawn: its kind, its place on the grid, and a chart's type."""
+    where = f"dashboard.widgets[{index}]"
+    settings = mapping(mapping(widget).get("settings"))
+    kind = settings.get("display_type")
+    if kind not in DISPLAY_TYPES:
+        yield f"{where}.settings.display_type must be one of {', '.join(DISPLAY_TYPES)}"
+    grid = whole_grid(settings)
+    if grid is None:
+        yield f"{where}.settings.grid must set x, y, w and h, each a whole number, and nothing else"
+    elif min(grid["x"], grid["y"]) < 0 or grid["x"] + grid["w"] > GRID_COLUMNS:
+        yield f"{where}.settings.grid must fit the dashboard's {GRID_COLUMNS} columns, from x 0 and y 0"
+    elif kind in DISPLAY_TYPES and (grid["w"] < MIN_GRID_WIDTH or grid["h"] < MIN_GRID_HEIGHT[kind]):
+        yield (
+            f"{where}.settings.grid must be at least {MIN_GRID_WIDTH} wide and {MIN_GRID_HEIGHT[kind]} high"
+            f" for a {kind}"
+        )
+    report = mapping(reports.get(text(mapping(widget).get("report"))))
+    if kind == "chart" and report and "chart_type" not in report:
+        yield f"{where} is a chart, so its report must set chart_type to one of {', '.join(CHART_TYPES)}"
+
+
+def overlap(a: dict, b: dict) -> bool:
+    """Return whether two places on the grid share a cell."""
+    across = a["x"] < b["x"] + b["w"] and b["x"] < a["x"] + a["w"]
+    down = a["y"] < b["y"] + b["h"] and b["y"] < a["y"] + a["h"]
+    return across and down
+
+
+def overlapping_widgets(widgets: list) -> Iterator[str]:
+    """Yield each pair of widgets that share a grid cell, since a dashboard can't draw both there."""
+    grids = [(index, whole_grid(mapping(mapping(widget).get("settings")))) for index, widget in enumerate(widgets)]
+    placed = [(index, grid) for index, grid in grids if grid]
+    yield from (
+        f"dashboard.widgets[{first}] and dashboard.widgets[{second}] overlap on the grid"
+        for (first, a), (second, b) in combinations(placed, 2)
+        if overlap(a, b)
+    )
+
+
 def dashboard_template_problems(stem: str, template: object, scopes: dict) -> Iterator[str]:
     """Yield what's wrong with one dashboard template: its id, text fields, filters, reports and widgets."""
     if not isinstance(template, dict):
@@ -384,10 +440,14 @@ def dashboard_template_problems(stem: str, template: object, scopes: dict) -> It
         if not one_line(mapping(report).get(name))
     )
     yield from (
-        f"cost_reports.{key}.{name} must be text"
+        f"cost_reports.{key}.date_bin must be text"
         for key, report in reports.items()
-        for name in ("date_bin", "chart_type")
-        if name in mapping(report) and not one_line(mapping(report)[name])
+        if "date_bin" in mapping(report) and not one_line(mapping(report)["date_bin"])
+    )
+    yield from (
+        f"cost_reports.{key}.chart_type must be one of {', '.join(CHART_TYPES)}"
+        for key, report in reports.items()
+        if "chart_type" in mapping(report) and mapping(report)["chart_type"] not in CHART_TYPES
     )
     yield from (
         f"cost_reports.{key}.groupings must be a list of text"
@@ -427,6 +487,10 @@ def dashboard_template_problems(stem: str, template: object, scopes: dict) -> It
         for index, widget in enumerate(widgets)
         if "settings" in mapping(widget) and not isinstance(mapping(widget)["settings"], dict)
     )
+    yield from (
+        problem for index, widget in enumerate(widgets) for problem in widget_problems(index, widget, reports)
+    )
+    yield from overlapping_widgets(widgets)
 
 
 def template_rows(body: str) -> list[dict[str, str]]:
@@ -819,15 +883,52 @@ def bundle_path(name: str, bundle: str) -> str:
     return f"skills/{name}.{hashlib.sha256(bundle.encode()).hexdigest()[:HASH_CHARS]}.json"
 
 
+def widget_thumbnail(widget: dict, reports: dict) -> dict:
+    """Return what a tile needs to draw one widget: its title, its kind, a chart's type, and its place on the grid."""
+    settings = widget["settings"]
+    chart = {"chart_type": reports[widget["report"]]["chart_type"]} if settings["display_type"] == "chart" else {}
+    return {
+        "title": one_line(widget_title(widget, reports)),
+        "display_type": settings["display_type"],
+        **chart,
+        "grid": {key: settings["grid"][key] for key in GRID_FIELDS},
+    }
+
+
+def template_thumbnails(skill: Skill) -> list[dict]:
+    """Return each valid template's thumbnail in the Templates table's order, the order a gallery shows them. A template
+    with problems gets none, since the size check builds the map before the check refuses the build."""
+    templates, scopes = skill_templates(skill), mapping(skill_scopes(skill))
+    files = [row["file"] for row in template_rows(split_frontmatter(skill.text or "")[1])]
+    valid = [
+        templates[file]
+        for file in files
+        if file in templates and not any(dashboard_template_problems(Path(file).stem, templates[file], scopes))
+    ]
+    return [
+        {
+            "id": template["id"],
+            "title": one_line(template["title"]),
+            "description": one_line(template["description"]),
+            "widgets": [
+                widget_thumbnail(widget, template["cost_reports"]) for widget in template["dashboard"]["widgets"]
+            ],
+        }
+        for template in valid
+    ]
+
+
 def index_entry(skill: Skill, bundle: str) -> dict:
-    """Return the skill's entry in the map: its description and tools, the files it can load, and its bundle's path."""
+    """Return the skill's entry in the map: description, tools, files, bundle path, and any templates' thumbnails."""
     fields = mapping(split_frontmatter(skill.text or "")[0])
+    thumbnails = template_thumbnails(skill)
     return {
         "name": skill.name,
         "description": one_line(fields.get("description")),
         "tools": tool_list(mapping(fields.get("metadata")).get("vantage-tools")),
         "files": sorted(skill.files),
         "bundle": bundle,
+        **({"templates": thumbnails} if thumbnails else {}),
     }
 
 

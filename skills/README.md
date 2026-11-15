@@ -44,7 +44,7 @@ skills/
     └── evals/                         eval cases, as YAML
 ```
 
-A skill can keep preview images in `assets/`, taken from a demo account. The build doesn't publish `assets/`, so never mention it in the steps.
+There's no preview image to add: a template's thumbnail is drawn from its widgets, as [Template thumbnails](#template-thumbnails) describes.
 
 ### Frontmatter
 
@@ -90,7 +90,7 @@ uv run scripts/check_skills.py --build /tmp/catalog
 
 | File | What it holds | Who reads it |
 |---|---|---|
-| `index.json` | Each skill's name, description and tools, its file paths, and the path of its bundle | The agent, when a session starts |
+| `index.json` | Each skill's name, description and tools, its file paths, the path of its bundle, and each template's thumbnail | The agent, when a session starts, and anything that draws the templates |
 | `skills/<skill>.<hash>.json` | One skill's bundle: its `SKILL.md` and every file under its `references/` | The agent, the first time a session loads that skill |
 | `evals.json` | Every eval case, with the cases generated from each template | The test harness only |
 
@@ -99,6 +99,29 @@ A bundle's name carries a hash of its content, so it changes whenever the skill 
 A pull request that touches `skills/` runs the check's tests (`uv run scripts/test_check_skills.py`) and the same build into a temporary folder, so a pull request that passes is one that builds.
 
 To try a change before it merges, copy or link your working folder into one of the agent folders above, with the Vantage MCP server connected.
+
+### Template thumbnails
+
+A template's thumbnail is drawn from its widgets, so the check holds each one to what both the dashboard and the drawing need: `settings.display_type` is `kpi`, `chart` or `table`, `settings.grid` sets whole numbers `x`, `y`, `w` and `h` on the dashboard's 12 columns, at least 2 wide and 2 high (1 high for a KPI), no two widgets overlap, and a chart's report sets `chart_type` to `area`, `line`, `bar`, `multi_bar` or `pie`.
+
+The build copies them into the `dashboard-templates` entry in `index.json`, in the Templates table's order:
+
+```json
+"templates": [
+  {
+    "id": "ai-spend-overview",
+    "title": "AI spend overview",
+    "description": "AI spend this month, a three-month trend by provider, and this month by model",
+    "widgets": [
+      { "title": "Total AI Spend This Month", "display_type": "kpi", "grid": { "x": 0, "y": 0, "w": 4, "h": 1 } },
+      { "title": "AI Spend by Provider, Last 3 Months", "display_type": "chart", "chart_type": "bar", "grid": { "x": 0, "y": 1, "w": 6, "h": 3 } },
+      { "title": "AI Spend by Model, This Month", "display_type": "table", "grid": { "x": 6, "y": 1, "w": 6, "h": 3 } }
+    ]
+  }
+]
+```
+
+To draw one, lay out 12 equal columns and as many equal rows as the lowest widget reaches, place each widget from column `x + 1` across `w` columns and from row `y + 1` down `h` rows, and draw its kind. The agent ignores `templates`. Whatever draws them reads a public repository over the network, so it shows every title and description as text and skips a widget whose kind or numbers fall outside these rules.
 
 ### Eval cases
 
