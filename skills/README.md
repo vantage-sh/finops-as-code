@@ -90,7 +90,7 @@ uv run scripts/check_skills.py --build /tmp/catalog
 
 | File | What it holds | Who reads it |
 |---|---|---|
-| `index.json` | Each skill's name, description and tools, its file paths, the path of its bundle, and each template's thumbnail | The agent, when a session starts, and anything that draws the templates |
+| `index.json` | Each skill's name, description and tools, its file paths, the path of its bundle, each template's thumbnail, and the rules the check holds them to | The agent, when a session starts, and anything that draws the templates |
 | `skills/<skill>.<hash>.json` | One skill's bundle: its `SKILL.md` and every file under its `references/` | The agent, the first time a session loads that skill |
 | `evals.json` | Every eval case, with the cases generated from each template | The test harness only |
 
@@ -102,7 +102,7 @@ To try a change before it merges, copy or link your working folder into one of t
 
 ### Template thumbnails
 
-A template's thumbnail is drawn from its widgets, so the check holds each one to what both the dashboard and the drawing need: `settings.display_type` is `kpi`, `chart` or `table`, `settings.grid` sets whole numbers `x`, `y`, `w` and `h` on the dashboard's 12 columns, at least 2 wide and 2 high (1 high for a KPI), no two widgets overlap, and a chart's report sets `chart_type` to `area`, `line`, `bar`, `multi_bar` or `pie`.
+A template's thumbnail is drawn from its widgets, so the check holds each one to what both the dashboard and the drawing need: `settings.display_type` is `kpi`, `chart` or `table`, `settings.grid` sets whole numbers `x`, `y`, `w` and `h` on the dashboard's 12 columns and within its first 100 rows, at least 2 wide and 2 high (1 high for a KPI), no two widgets overlap, and a chart's report sets `chart_type` to `area`, `line`, `bar`, `multi_bar` or `pie`.
 
 The build copies them into the `dashboard-templates` entry in `index.json`, in the Templates table's order:
 
@@ -121,7 +121,34 @@ The build copies them into the `dashboard-templates` entry in `index.json`, in t
 ]
 ```
 
-To draw one, lay out 12 equal columns and as many equal rows as the lowest widget reaches, place each widget from column `x + 1` across `w` columns and from row `y + 1` down `h` rows, and draw its kind. The agent ignores `templates`. A template's `title` runs to 200 characters, since the console's Set up link carries it, and its `description` to 1,024, like a skill's. Whatever draws them reads a public repository over the network, so it shows every title and description as text, skips a template whose title or description runs longer, and skips a widget whose kind or numbers fall outside these rules.
+To draw one, lay out 12 equal columns and as many equal rows as the lowest widget reaches, place each widget from column `x + 1` across `w` columns and from row `y + 1` down `h` rows, and draw its kind. The agent ignores `templates`. A template's `id` runs to 240 characters, since its eval case ids add up to 10 and stop at 250, and its `title` to 200, since the console's Set up link carries both. Its `description` runs to 1,024, like a skill's. Whatever draws them reads a public repository over the network, so it shows every title and description as text, skips a template whose id, title or description runs longer, and skips a widget whose kind or numbers fall outside these rules.
+
+### The rules in the map
+
+`index.json` also carries `rules`, the limits the check holds every skill and template to. The apps that read the catalog compare their own limits with these instead of copying them:
+
+```json
+"rules": {
+  "max_index_chars": 200000,
+  "max_file_chars": 64000,
+  "max_bundle_chars": 500000,
+  "max_description_chars": 1024,
+  "reserved_names": ["anomaly-investigation", "autopilot", "terraform"],
+  "templates": {
+    "display_types": ["kpi", "chart", "table"],
+    "chart_types": ["area", "line", "bar", "multi_bar", "pie"],
+    "grid_columns": 12,
+    "max_grid_rows": 100,
+    "min_grid_width": 2,
+    "min_grid_height": { "kpi": 1, "chart": 2, "table": 2 },
+    "max_id_chars": 240,
+    "max_title_chars": 200,
+    "max_description_chars": 1024
+  }
+}
+```
+
+Characters count the way JavaScript counts a string's length. The agent and the console check `rules` every time they fetch the map, and report any rule they can't take: a maximum past their own, a minimum under it, a grid that isn't 12 columns, a kind they don't draw, or a bundled skill's name the list leaves out. They keep serving what they can either way. Their own limits stay in their code, so this file can't raise them, which means loosening a rule past one of them takes a change to that app first.
 
 ### Eval cases
 

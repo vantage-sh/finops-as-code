@@ -7,7 +7,8 @@
     uv run scripts/check_skills.py                 check every skill
     uv run scripts/check_skills.py --build <dir>   check, then write the catalog into <dir>
 
-The catalog is index.json, a map of every skill, one bundle per skill in skills/ with its SKILL.md and references,
+The catalog is index.json, a map of every skill and the rules the check holds them to, one bundle per skill in
+skills/ with its SKILL.md and references,
 and evals.json, every eval case, the ones generated from each template included. A workflow builds it on every merge
 to main and pushes it to the catalog branch, so nothing generated is committed next to the skills.
 """
@@ -71,6 +72,7 @@ JSON_ONLY = (
 
 DASHBOARD_TEMPLATES = "dashboard-templates"  # the one skill whose Templates table lists dashboard templates
 MAX_TEMPLATE_TITLE_CHARS = 200  # the console's Set up link carries a template's title, and servers refuse long URLs
+MAX_TEMPLATE_ID_CHARS = 240  # a template's eval case ids add up to 10 characters to its id, and stop at 250
 # The periods a report may use, the ones Step 3 covers from the first day of the month four months ago, for a scope's
 # searches and a filter's check alike. Vantage starts last_3_months on the first of the month three months before
 # the day two days ago, so during a month's first two days it starts four months back.
@@ -93,6 +95,7 @@ DISPLAY_TYPES = ("kpi", "chart", "table")
 CHART_TYPES = ("area", "line", "bar", "multi_bar", "pie")
 GRID_FIELDS = ("x", "y", "w", "h")
 GRID_COLUMNS = 12
+MAX_GRID_ROWS = 100  # the rows the console's template gallery draws, though a dashboard itself has no last row
 MIN_GRID_WIDTH = 2
 MIN_GRID_HEIGHT = {"kpi": 1, "chart": 2, "table": 2}
 
@@ -349,8 +352,11 @@ def widget_problems(index: int, widget: object, reports: dict) -> Iterator[str]:
     grid = whole_grid(settings)
     if grid is None:
         yield f"{where}.settings.grid must set x, y, w and h, each a whole number, and nothing else"
-    elif min(grid["x"], grid["y"]) < 0 or grid["x"] + grid["w"] > GRID_COLUMNS:
-        yield f"{where}.settings.grid must fit the dashboard's {GRID_COLUMNS} columns, from x 0 and y 0"
+    elif min(grid["x"], grid["y"]) < 0 or grid["x"] + grid["w"] > GRID_COLUMNS or grid["y"] + grid["h"] > MAX_GRID_ROWS:
+        yield (
+            f"{where}.settings.grid must fit the dashboard's {GRID_COLUMNS} columns and the gallery's {MAX_GRID_ROWS}"
+            " rows, from x 0 and y 0"
+        )
     elif kind in DISPLAY_TYPES and (grid["w"] < MIN_GRID_WIDTH or grid["h"] < MIN_GRID_HEIGHT[kind]):
         yield (
             f"{where}.settings.grid must be at least {MIN_GRID_WIDTH} wide and {MIN_GRID_HEIGHT[kind]} high"
@@ -388,6 +394,8 @@ def dashboard_template_problems(stem: str, template: object, scopes: dict) -> It
         yield JSON_ONLY
     if template.get("id") != stem:
         yield f"id must be {stem}, the file's name"
+    if len(stem) > MAX_TEMPLATE_ID_CHARS:
+        yield f"id must be at most {MAX_TEMPLATE_ID_CHARS} characters, so its eval case ids fit in {MAX_CASE_ID_CHARS}"
     yield from (
         f"{field} must be text of 1 to {limit} characters"
         for field, limit in (("title", MAX_TEMPLATE_TITLE_CHARS), ("description", MAX_DESCRIPTION_CHARS))
@@ -944,12 +952,35 @@ def evals_text(skills: list[Skill]) -> str:
     return json.dumps({"version": 1, "skills": found}, indent=2, ensure_ascii=False) + "\n"
 
 
+def catalog_rules() -> dict:
+    """Return the limits the check holds skills and templates to, which Scout and the console compare with their own."""
+    return {
+        "max_index_chars": MAX_INDEX_CHARS,
+        "max_file_chars": MAX_FILE_CHARS,
+        "max_bundle_chars": MAX_BUNDLE_CHARS,
+        "max_description_chars": MAX_DESCRIPTION_CHARS,
+        "reserved_names": sorted(BUILT_IN_SKILLS),
+        "templates": {
+            "display_types": list(DISPLAY_TYPES),
+            "chart_types": list(CHART_TYPES),
+            "grid_columns": GRID_COLUMNS,
+            "max_grid_rows": MAX_GRID_ROWS,
+            "min_grid_width": MIN_GRID_WIDTH,
+            "min_grid_height": dict(MIN_GRID_HEIGHT),
+            "max_id_chars": MAX_TEMPLATE_ID_CHARS,
+            "max_title_chars": MAX_TEMPLATE_TITLE_CHARS,
+            "max_description_chars": MAX_DESCRIPTION_CHARS,
+        },
+    }
+
+
 def agent_files(skills: list[Skill]) -> dict[str, str]:
     """Return the catalog files the agent reads, by path: the map and one bundle per skill."""
     ordered = sorted(skills, key=lambda skill: skill.name)
     bundles = {skill.name: bundle_text(skill) for skill in ordered}
     paths = {name: bundle_path(name, bundle) for name, bundle in bundles.items()}
-    index = {"version": 2, "skills": [index_entry(skill, paths[skill.name]) for skill in ordered]}
+    entries = [index_entry(skill, paths[skill.name]) for skill in ordered]
+    index = {"version": 2, "rules": catalog_rules(), "skills": entries}
     return {
         "index.json": json.dumps(index, indent=2, ensure_ascii=False) + "\n",
         **{paths[name]: bundle for name, bundle in bundles.items()},
