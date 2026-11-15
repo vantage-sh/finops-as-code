@@ -1,5 +1,41 @@
 {
   "version": 2,
+  "rules": {
+    "max_index_chars": 200000,
+    "max_file_chars": 64000,
+    "max_bundle_chars": 500000,
+    "max_description_chars": 1024,
+    "reserved_names": [
+      "anomaly-investigation",
+      "autopilot",
+      "terraform"
+    ],
+    "templates": {
+      "display_types": [
+        "kpi",
+        "chart",
+        "table"
+      ],
+      "chart_types": [
+        "area",
+        "line",
+        "bar",
+        "multi_bar",
+        "pie"
+      ],
+      "grid_columns": 12,
+      "max_grid_rows": 100,
+      "min_grid_width": 2,
+      "min_grid_height": {
+        "kpi": 1,
+        "chart": 2,
+        "table": 2
+      },
+      "max_id_chars": 240,
+      "max_title_chars": 200,
+      "max_description_chars": 1024
+    }
+  },
   "skills": [
     {
       "name": "dashboard-templates",
